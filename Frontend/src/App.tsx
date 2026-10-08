@@ -715,7 +715,7 @@ function CatalogView() {
 
 
       {/* Sticky Bar Filters */}
-      <div className="sticky top-[64px] z-10 border-b border-slate-200 dark:border-slate-800 sticky-filter-bar backdrop-blur-md bg-white/90 dark:bg-slate-900/90">
+      <div className="sticky top-[64px] z-30 border-b border-slate-200 dark:border-slate-800 sticky-filter-bar backdrop-blur-md bg-white/90 dark:bg-slate-900/90">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col gap-3 py-3">
             <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
