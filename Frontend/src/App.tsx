@@ -1,17 +1,31 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Users, Gamepad2, ShoppingBag, Truck, Wrench, Shield, Package,
   Search, Plus, TrendingUp, Clock, AlertTriangle, CheckCircle2, Star, Tag,
   Phone, Mail, MapPin, Hash, DollarSign, ArrowUpRight, CreditCard,
-  Menu, X, ChevronRight, Layers, RotateCcw, Clipboard, Monitor, Headphones, Gift, Disc3
+  Menu, X, ChevronRight, ChevronLeft, Layers, RotateCcw, Clipboard, Monitor, Headphones, Gift, Disc3,
+  Sun, Moon, SlidersHorizontal, Send, Navigation, MessageSquare, Filter, Lock, LogOut
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type View = 'catalog' | 'admin';
-type AdminSection = 'dashboard' | 'clients' | 'rentals' | 'sales' | 'deliveries' | 'technical' | 'warranties' | 'purchases';
+type AdminSection = 'dashboard' | 'clients' | 'rentals' | 'sales' | 'deliveries' | 'technical' | 'warranties' | 'purchases' | 'contact';
 type CatalogCategory = 'all' | 'consoles' | 'accessories' | 'games' | 'cards';
 type FilterType = 'all' | 'sale' | 'rental';
+type BrandFilter = 'all' | 'PS5' | 'PS4' | 'Xbox';
+
+interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  message: string;
+  date: string;
+  status: 'unread' | 'read' | 'replied';
+}
+
 
 interface Product {
   id: string;
@@ -154,6 +168,12 @@ const PURCHASES: Purchase[] = [
   { id: 'pc6', supplier: 'ConsoleHub Import', product: 'PlayStation 5 Digital', quantity: 2, unitCost: 500, total: 1000, date: '2024-08-28', invoiceNumber: 'FAC-2024-0820', status: 'returned' },
 ];
 
+const CONTACT_MESSAGES: ContactMessage[] = [
+  { id: 'm1', name: 'Gabriel Torres', email: 'gabriel.t@gmail.com', phone: '0412-111-2233', subject: 'Consulta por PS5', message: 'Buenas tardes, quisiera saber si tienen disponible alquiler de PS5 por fin de semana completo.', date: '2024-09-24', status: 'unread' },
+  { id: 'm2', name: 'Elena Rivas', email: 'elena.r@hotmail.com', phone: '0424-999-8877', subject: 'Servicio Técnico Xbox', message: 'Hola, mi Xbox Series S hace ruido excesivo en el ventilador. ¿Hacen mantenimiento preventivo?', date: '2024-09-23', status: 'read' },
+  { id: 'm3', name: 'Marcos Silva', email: 'marcos.silva@yahoo.com', phone: '0414-333-4455', subject: 'Garantía de mando DualSense', message: 'Compré un mando hace 2 semanas y el botón R2 se siente flojo.', date: '2024-09-21', status: 'replied' },
+];
+
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 
 function Badge({ cls, children }: { cls: string; children: React.ReactNode }) {
@@ -171,13 +191,13 @@ function fmtMoney(n: number) {
 function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="relative flex-1 min-w-0">
-      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+      <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 pointer-events-none" />
       <input
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? 'Buscar...'}
-        className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-lg text-gtext placeholder:text-muted focus:outline-none"
+        className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-black dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-400 shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
       />
     </div>
   );
@@ -204,6 +224,241 @@ function AddBtn({ label, onClick }: { label: string; onClick?: () => void }) {
   );
 }
 
+function DatePicker({
+  value,
+  onChange,
+  placeholder = 'Seleccionar fecha',
+  className = ''
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const parsedDate = useMemo(() => {
+    if (!value) return new Date();
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }, [value]);
+
+  const [viewYear, setViewYear] = useState(parsedDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(parsedDate.getMonth());
+
+  useEffect(() => {
+    if (value) {
+      const [y, m] = value.split('-').map(Number);
+      setViewYear(y);
+      setViewMonth(m - 1);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  const dayNames = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+
+  const calendarDays = useMemo(() => {
+    const firstDayOfMonth = new Date(viewYear, viewMonth, 1);
+    const lastDayOfMonth = new Date(viewYear, viewMonth + 1, 0);
+
+    let startDayOfWeek = firstDayOfMonth.getDay() - 1;
+    if (startDayOfWeek < 0) startDayOfWeek = 6;
+
+    const totalDaysInMonth = lastDayOfMonth.getDate();
+    const prevMonthLastDay = new Date(viewYear, viewMonth, 0).getDate();
+
+    const days = [];
+
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      days.push({
+        day: prevMonthLastDay - i,
+        month: viewMonth - 1,
+        year: viewMonth === 0 ? viewYear - 1 : viewYear,
+        isCurrentMonth: false
+      });
+    }
+
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+      days.push({
+        day: d,
+        month: viewMonth,
+        year: viewYear,
+        isCurrentMonth: true
+      });
+    }
+
+    const remaining = 42 - days.length;
+    for (let d = 1; d <= remaining; d++) {
+      days.push({
+        day: d,
+        month: viewMonth + 1,
+        year: viewMonth === 11 ? viewYear + 1 : viewYear,
+        isCurrentMonth: false
+      });
+    }
+
+    return days;
+  }, [viewYear, viewMonth]);
+
+  const prevMonth = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(v => v - 1);
+    } else {
+      setViewMonth(v => v - 1);
+    }
+  };
+
+  const nextMonth = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(v => v + 1);
+    } else {
+      setViewMonth(v => v + 1);
+    }
+  };
+
+  const selectDate = (y: number, m: number, d: number) => {
+    const realDate = new Date(y, m, d);
+    const yStr = realDate.getFullYear();
+    const mStr = String(realDate.getMonth() + 1).padStart(2, '0');
+    const dStr = String(realDate.getDate()).padStart(2, '0');
+    const formatted = `${yStr}-${mStr}-${dStr}`;
+    onChange(formatted);
+    setIsOpen(false);
+  };
+
+  const setToday = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = new Date();
+    selectDate(now.getFullYear(), now.getMonth(), now.getDate());
+  };
+
+  const formatDisplay = (val: string) => {
+    if (!val) return '';
+    const [y, m, d] = val.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  const todayStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative inline-block w-full">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700 flex items-center justify-between cursor-pointer select-none transition-all hover:border-indigo-400 dark:hover:border-indigo-500 text-sm ${className}`}
+      >
+        <span className={value ? 'font-500' : 'text-slate-400 dark:text-slate-500'}>
+          {value ? formatDisplay(value) : placeholder}
+        </span>
+        <Clock size={16} className="text-slate-400 dark:text-slate-400 flex-shrink-0 ml-2" />
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-[100] top-full left-0 mt-2 w-72 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl text-slate-900 dark:text-white animate-in fade-in zoom-in-95 duration-150">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={prevMonth}
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="font-display font-700 text-sm capitalize">
+              {monthNames[viewMonth]} {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={nextMonth}
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 gap-1 text-center mb-1">
+            {dayNames.map(d => (
+              <span key={d} className="text-[10px] font-700 text-indigo-600 dark:text-indigo-400 uppercase py-1">
+                {d}
+              </span>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {calendarDays.map((cell, idx) => {
+              const cellDateObj = new Date(cell.year, cell.month, cell.day);
+              const cellStr = `${cellDateObj.getFullYear()}-${String(cellDateObj.getMonth() + 1).padStart(2, '0')}-${String(cellDateObj.getDate()).padStart(2, '0')}`;
+              const isSelected = value === cellStr;
+              const isToday = todayStr === cellStr;
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => selectDate(cell.year, cell.month, cell.day)}
+                  className={`h-8 w-8 text-xs font-500 rounded-lg flex items-center justify-center transition-all ${
+                    isSelected
+                      ? 'bg-[#6153d6] text-white font-700 shadow-md shadow-indigo-500/30 scale-105'
+                      : isToday
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-700 border border-indigo-200 dark:border-indigo-800'
+                      : cell.isCurrentMonth
+                      ? 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      : 'text-slate-300 dark:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                  }`}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={setToday}
+              className="text-indigo-600 dark:text-indigo-400 font-600 hover:underline"
+            >
+              Hoy
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-500"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Catalog View ─────────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -214,20 +469,24 @@ const CAT_MAP: Record<string, string> = { consoles: 'console', accessories: 'acc
 
 function ProductArtwork({ product }: { product: Product }) {
   return (
-    <div className="product-art relative h-52 overflow-hidden bg-slate-100">
+    <div className="product-art relative h-56 overflow-hidden product-art-container flex items-center justify-center p-1.5">
+      {/* Dark grid background pattern for contrast */}
+      <div className="absolute inset-0 bg-slate-950/80 product-art-grid opacity-30 pointer-events-none" />
       <img
         src={product.image}
         alt={`Imagen referencial de ${product.name}`}
         loading="lazy"
-        className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-700"
+        className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-700 rounded-xl relative z-0"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/35 via-transparent to-white/5" />
-      <div className="absolute top-4 left-4 px-2 py-1 rounded-full bg-white/90 backdrop-blur text-[9px] font-700 tracking-[0.16em] text-slate-700">
+      {/* Contrast vignette shadow overlay around image so white consoles pop cleanly */}
+      <div className="absolute inset-0 product-art-shadow-overlay pointer-events-none z-10" />
+      <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur border border-white/20 text-[9px] font-700 tracking-[0.16em] text-slate-100 shadow-md">
         {product.category === 'card' ? 'ENTREGA DIGITAL' : 'IMAGEN REFERENCIAL'}
       </div>
     </div>
   );
 }
+
 
 const PRODUCT_DISCOUNTS: Record<string, number> = { p1: 12, p5: 10, p8: 15, p11: 8, p14: 18, p19: 10, p21: 12 };
 
@@ -296,129 +555,275 @@ function ProductCard({ product }: { product: Product }) {
   );
 }
 
+const HERO_SHOWCASE: Record<string, { tag: string; title: string; subtitle: string; image: string; icon: React.ReactNode }> = {
+  consoles: {
+    tag: 'DESTACADO · CONSOLAS',
+    title: 'PlayStation 5 & Xbox Series X',
+    subtitle: 'Potencia de nueva generación a 4K@120fps',
+    image: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1100&h=850&fit=crop&auto=format',
+    icon: <Gamepad2 size={20} />
+  },
+  accessories: {
+    tag: 'DESTACADO · ACCESORIOS',
+    title: 'Controles DualSense & Headsets',
+    subtitle: 'Vibración háptica, audio 3D y gatillos adaptativos',
+    image: 'https://images.unsplash.com/photo-1754594207981-8b97210a6d3a?w=1100&h=850&fit=crop&auto=format',
+    icon: <Headphones size={20} />
+  },
+  games: {
+    tag: 'DESTACADO · JUEGOS',
+    title: 'Títulos Estreno & Exclusivos',
+    subtitle: 'Mundos abiertos, acción y aventuras inolvidables',
+    image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1100&h=850&fit=crop&auto=format',
+    icon: <Disc3 size={20} />
+  },
+  cards: {
+    tag: 'DESTACADO · DIGITAL',
+    title: 'Tarjetas PSN & Game Pass',
+    subtitle: 'Entrega digital instantánea y membresías',
+    image: 'https://images.unsplash.com/photo-1607082349566-187342175e2f?w=1100&h=850&fit=crop&auto=format',
+    icon: <CreditCard size={20} />
+  },
+  all: {
+    tag: 'DESTACADO · GAMING 2026',
+    title: 'PlayStation 5 Disc Edition',
+    subtitle: 'Potencia de nueva generación con soporte 4K',
+    image: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1100&h=850&fit=crop&auto=format',
+    icon: <Gamepad2 size={20} />
+  }
+};
+
 function CatalogView() {
   const [category, setCategory] = useState<CatalogCategory>('all');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [brand, setBrand] = useState<BrandFilter>('all');
   const [search, setSearch] = useState('');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [showPriceFilter, setShowPriceFilter] = useState<boolean>(false);
+
+  const heroData = HERO_SHOWCASE[category] || HERO_SHOWCASE.all;
 
   const filtered = useMemo(() => {
     return PRODUCTS.filter(p => {
       if (category !== 'all' && p.category !== CAT_MAP[category]) return false;
       if (filter === 'sale' && p.type === 'rental') return false;
       if (filter === 'rental' && p.type === 'sale') return false;
+      if (brand !== 'all' && p.brand !== brand) return false;
+
+      const price = p.salePrice ?? p.rentalPrice ?? 0;
+      if (minPrice !== '' && price < Number(minPrice)) return false;
+      if (maxPrice !== '' && price > Number(maxPrice)) return false;
+
       if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.description.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [category, filter, search]);
+  }, [category, filter, brand, search, minPrice, maxPrice]);
+
+  const hasActiveFilters = category !== 'all' || filter !== 'all' || brand !== 'all' || search !== '' || minPrice !== '' || maxPrice !== '';
+
+  const clearFilters = () => {
+    setCategory('all');
+    setFilter('all');
+    setBrand('all');
+    setSearch('');
+    setMinPrice('');
+    setMaxPrice('');
+  };
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg transition-colors duration-200">
       {/* Hero Banner */}
-      <div className="relative overflow-hidden bg-white border-b border-slate-200">
+      <div className="relative overflow-hidden bg-blue-50/80 dark:bg-slate-900 border-b border-blue-100 dark:border-slate-800 hero-banner">
         <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(circle at 85% 20%, rgba(37,99,235,0.07), transparent 28%), radial-gradient(circle at 72% 85%, rgba(109,92,231,0.06), transparent 30%)'
+          background: 'radial-gradient(circle at 85% 20%, rgba(99,102,241,0.12), transparent 45%), radial-gradient(circle at 15% 85%, rgba(37,99,235,0.10), transparent 45%)'
         }} />
         <div className="relative max-w-7xl mx-auto px-6 py-10 md:py-14">
           <div className="grid lg:grid-cols-[0.9fr_1.1fr] items-center gap-10 lg:gap-14">
             <div className="max-w-xl">
               <div className="flex items-center gap-2 mb-5">
                 <span className="badge badge-sale">Colección 2026</span>
-                <span className="text-xs text-muted">Equipos seleccionados</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Equipos seleccionados</span>
               </div>
-              <h1 className="font-display font-700 text-4xl md:text-5xl lg:text-[56px] text-gtext leading-[1.04] mb-5 tracking-[-0.035em]">
-                Tu próxima partida empieza <span className="text-blue">aquí.</span>
+              <h1 className="font-display font-700 text-4xl md:text-5xl lg:text-[56px] text-slate-900 dark:text-white leading-[1.04] mb-5 tracking-[-0.035em]">
+                Tu próxima partida empieza <span className="text-[#5488D6]">aquí.</span>
               </h1>
-              <p className="text-muted text-base md:text-lg leading-relaxed max-w-lg">
+              <p className="text-slate-600 dark:text-slate-300 text-base md:text-lg leading-relaxed max-w-lg">
                 Consolas, controles y videojuegos seleccionados para ofrecer rendimiento, garantía y una experiencia de compra especializada.
               </p>
+
+              {/* Dynamic Hero Buttons */}
               <div className="flex flex-wrap items-center gap-3 mt-7">
-                <button onClick={() => setCategory('consoles')} className="px-5 py-3 rounded-xl bg-[#172033] text-white text-sm font-600 hover:bg-[#273249] transition-colors">
-                  Explorar consolas
+                <button
+                  onClick={() => setCategory(category === 'consoles' ? 'all' : 'consoles')}
+                  className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${
+                    category === 'consoles' || category === 'all'
+                      ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]'
+                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'
+                  }`}
+                >
+                  <Gamepad2 size={16} /> Explorar consolas
                 </button>
-                <button onClick={() => setCategory('accessories')} className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-gtext text-sm font-600 hover:border-slate-300 transition-colors">
-                  Ver accesorios
+                <button
+                  onClick={() => setCategory(category === 'accessories' ? 'all' : 'accessories')}
+                  className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${
+                    category === 'accessories'
+                      ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]'
+                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'
+                  }`}
+                >
+                  <Headphones size={16} /> Ver accesorios
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-4 mt-9 pt-6 border-t border-slate-200">
-                <div><strong className="block font-display text-xl text-gtext">22+</strong><span className="text-xs text-muted">Productos</span></div>
-                <div><strong className="block font-display text-xl text-gtext">12 meses</strong><span className="text-xs text-muted">Garantía</span></div>
-                <div><strong className="block font-display text-xl text-gtext">Soporte</strong><span className="text-xs text-muted">Especializado</span></div>
+
+              <div className="grid grid-cols-3 gap-4 mt-9 pt-6 border-t border-slate-200 dark:border-slate-800">
+                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">22+</strong><span className="text-xs text-slate-500 dark:text-slate-400">Productos</span></div>
+                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">12 meses</strong><span className="text-xs text-slate-500 dark:text-slate-400">Garantía</span></div>
+                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">Soporte</strong><span className="text-xs text-slate-500 dark:text-slate-400">Especializado</span></div>
               </div>
             </div>
 
+            {/* Dynamic Animated Hero Showcase Card */}
             <div className="relative lg:min-h-[430px]">
-              <div className="hero-photo relative h-[340px] sm:h-[420px] overflow-hidden rounded-[28px] bg-slate-900">
+              <div key={category} className="hero-animate hero-photo relative h-[340px] sm:h-[420px] overflow-hidden rounded-[28px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
                 <img
-                  src="https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1100&h=850&fit=crop&auto=format"
-                  alt="Consola PlayStation 5 y control DualSense"
-                  className="w-full h-full object-cover"
+                  src={heroData.image}
+                  alt={heroData.title}
+                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-transparent" />
-                <div className="absolute left-6 bottom-6 text-white">
-                  <span className="text-[10px] font-700 tracking-[0.18em] opacity-70">DESTACADO</span>
-                  <div className="font-display text-2xl font-600 mt-1">PlayStation 5</div>
-                  <div className="text-sm text-white/70 mt-1">Potencia de nueva generación</div>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+                <div className="absolute left-6 bottom-6 text-white max-w-md">
+                  <span className="text-[10px] font-700 tracking-[0.18em] text-white bg-[#5488D6] border border-[#5488D6]/60 px-2.5 py-1 rounded-full inline-block mb-2 shadow-sm">
+                    {heroData.tag}
+                  </span>
+                  <div className="font-display text-2xl md:text-3xl font-700 leading-tight text-white">{heroData.title}</div>
+                  <div className="text-sm text-white/80 mt-1">{heroData.subtitle}</div>
                 </div>
               </div>
-              <div className="absolute -left-4 sm:-left-7 top-8 bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-900/10 p-3 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue flex items-center justify-center"><Gamepad2 size={20} /></div>
-                <div><div className="text-xs text-muted">Disponible para</div><div className="text-sm font-600 text-gtext">Venta y alquiler</div></div>
+              <div className="absolute -left-4 sm:-left-7 top-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 p-3 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue dark:text-blue-400 flex items-center justify-center">{heroData.icon}</div>
+                <div><div className="text-xs text-slate-500 dark:text-slate-400">Disponible para</div><div className="text-sm font-600 text-slate-900 dark:text-white">Venta y alquiler</div></div>
               </div>
-              <div className="absolute -right-2 sm:-right-5 bottom-8 bg-white/95 backdrop-blur rounded-2xl border border-white shadow-xl shadow-slate-900/10 px-4 py-3">
+              <div className="absolute -right-2 sm:-right-5 bottom-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 px-4 py-3">
                 <div className="flex items-center gap-1 text-amber-500 mb-1"><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /></div>
-                <div className="text-xs font-600 text-gtext">Productos verificados</div>
+                <div className="text-xs font-600 text-slate-900 dark:text-white">Productos verificados</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="sticky top-[64px] z-10 border-b border-slate-200" style={{ background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(12px)' }}>
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 py-3">
-            {/* Category tabs */}
-            <div className="flex items-center gap-1 flex-wrap">
-              {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
-                <button key={cat} onClick={() => setCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-500 transition-all ${category === cat ? 'text-white' : 'text-muted hover:text-gtext'}`}
-                  style={category === cat ? { background: '#172033', boxShadow: '0 2px 5px rgba(15,23,42,0.12)' } : { background: '#f1f5f9' }}>
-                  {CATEGORY_LABELS[cat]}
-                </button>
-              ))}
-            </div>
 
-            <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
-              {/* Type filter */}
-              <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.12)' }}>
-                {(['all', 'sale', 'rental'] as FilterType[]).map(f => (
-                  <button key={f} onClick={() => setFilter(f)}
-                    className={`px-3 py-1 rounded-md text-xs font-500 transition-all ${filter === f ? 'text-white' : 'text-muted hover:text-gtext'}`}
-                    style={filter === f ? { background: 'rgba(56,189,248,0.2)', color: '#7dd3fc' } : {}}>
-                    {f === 'all' ? 'Todos' : f === 'sale' ? 'Venta' : 'Alquiler'}
+      {/* Sticky Bar Filters */}
+      <div className="sticky top-[64px] z-10 border-b border-slate-200 dark:border-slate-800 sticky-filter-bar backdrop-blur-md bg-white/90 dark:bg-slate-900/90">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col gap-3 py-3">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+              {/* Category tabs */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
+                  <button key={cat} onClick={() => setCategory(cat)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-500 transition-all ${category === cat ? 'bg-[#5488D6] text-white shadow-sm shadow-[#5488D6]/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                    {CATEGORY_LABELS[cat]}
                   </button>
                 ))}
               </div>
-              {/* Search */}
-              <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
+
+              {/* Brand and Type Filters */}
+              <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
+                {/* Brand selector */}
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  {(['all', 'PS5', 'PS4', 'Xbox'] as BrandFilter[]).map(b => (
+                    <button key={b} onClick={() => setBrand(b)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${brand === b ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
+                      {b === 'all' ? 'Marcas' : b}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Modality filter */}
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-[#5488D6]/10 dark:bg-[#5488D6]/15 border border-[#5488D6]/25 dark:border-[#5488D6]/30">
+                  {(['all', 'sale', 'rental'] as FilterType[]).map(f => (
+                    <button key={f} onClick={() => setFilter(f)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${filter === f ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
+                      {f === 'all' ? 'Todos' : f === 'sale' ? 'Venta' : 'Alquiler'}
+                    </button>
+                  ))}
+                </div>
+
+
+                {/* Toggle Price Filter Panel */}
+                <button
+                  onClick={() => setShowPriceFilter(!showPriceFilter)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-600 transition-colors ${showPriceFilter || minPrice || maxPrice ? 'bg-blue/10 border-blue text-blue dark:text-indigo-400' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}
+                >
+                  <SlidersHorizontal size={14} /> Precios
+                </button>
+
+                {/* Search input */}
+                <div className="w-full sm:w-64">
+                  <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
+                </div>
+              </div>
             </div>
+
+            {/* Price Filter Sub-panel */}
+            {showPriceFilter && (
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-4 text-xs animate-in fade-in duration-200">
+                <span className="font-600 text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                  <Tag size={13} className="text-blue dark:text-indigo-400" /> Rango de Precio ($):
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    placeholder="Mín $"
+                    value={minPrice}
+                    onChange={e => setMinPrice(e.target.value)}
+                    className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                  />
+                  <span className="text-slate-500">-</span>
+                  <input
+                    type="number"
+                    placeholder="Máx $"
+                    value={maxPrice}
+                    onChange={e => setMaxPrice(e.target.value)}
+                    className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                  />
+                </div>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="ml-auto text-xs font-600 text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
+                  >
+                    <RotateCcw size={12} /> Limpiar filtros
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
 
       {/* Products Grid */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-5">
           <p className="text-sm text-muted">{filtered.length} producto{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</p>
+          {hasActiveFilters && !showPriceFilter && (
+            <button onClick={clearFilters} className="text-xs text-red-600 font-600 hover:underline flex items-center gap-1">
+              <RotateCcw size={12} /> Limpiar filtros
+            </button>
+          )}
         </div>
         {filtered.length === 0 ? (
           <div className="text-center py-24 text-muted">
             <Gamepad2 size={48} className="mx-auto mb-4 opacity-20" />
             <p className="text-lg">No se encontraron productos</p>
-            <p className="text-sm mt-1">Intenta con otra búsqueda o categoría</p>
+            <p className="text-sm mt-1">Intenta ajustando los filtros de precio o búsqueda</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+
             {filtered.map(p => <ProductCard key={p.id} product={p} />)}
           </div>
         )}
@@ -569,7 +974,7 @@ function ClientsSection() {
     closeModal();
   };
 
-  const fieldClass = (field: string) => `w-full px-3.5 py-2.5 rounded-xl border bg-white text-sm text-gtext placeholder:text-slate-400 transition-shadow ${errors[field] ? 'border-red-300' : 'border-slate-200'}`;
+  const fieldClass = (field: string) => `w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-shadow ${errors[field] ? 'border-red-300 dark:border-red-500/50' : 'border-slate-200 dark:border-slate-700'}`;
 
   return (
     <div>
@@ -613,62 +1018,62 @@ function ClientsSection() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
-          <button aria-label="Cerrar modal" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={closeModal} />
-          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl shadow-slate-950/25">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" />
-            <div className="flex items-start justify-between px-6 sm:px-8 pt-7 pb-5 border-b border-slate-100">
+          <button aria-label="Cerrar modal" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={closeModal} />
+          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="flex items-start justify-between px-6 sm:px-8 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-[#f1efff] text-[#6153d6] flex items-center justify-center"><Users size={22} /></div>
+                <div className="w-12 h-12 rounded-2xl bg-[#f1efff] dark:bg-indigo-950/60 text-[#6153d6] dark:text-indigo-400 flex items-center justify-center"><Users size={22} /></div>
                 <div>
-                  <div className="text-[11px] font-700 tracking-[0.14em] text-[#6153d6] uppercase">Gestión de clientes</div>
-                  <h3 className="font-display text-2xl font-700 text-gtext mt-1">Registrar nuevo cliente</h3>
-                  <p className="text-sm text-muted mt-1">Completa la información para crear su perfil comercial.</p>
+                  <div className="text-[11px] font-700 tracking-[0.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Gestión de clientes</div>
+                  <h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nuevo cliente</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Completa la información para crear su perfil comercial.</p>
                 </div>
               </div>
-              <button onClick={closeModal} className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"><X size={19} /></button>
+              <button onClick={closeModal} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
 
             <form onSubmit={saveClient} className="px-6 sm:px-8 py-6">
               <div className="grid sm:grid-cols-2 gap-x-5 gap-y-5">
                 <label className="sm:col-span-2">
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Nombre completo</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nombre completo</span>
                   <input autoFocus value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={fieldClass('name')} placeholder="Ej. Andrea Ramírez" />
-                  {errors.name && <span className="block text-xs text-red-600 mt-1.5">{errors.name}</span>}
+                  {errors.name && <span className="block text-xs text-red-600 dark:text-red-400 mt-1.5">{errors.name}</span>}
                 </label>
                 <label>
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Documento de identidad</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Documento de identidad</span>
                   <input value={form.cedula} onChange={e => setForm({ ...form, cedula: e.target.value })} className={fieldClass('cedula')} placeholder="V-12345678" />
-                  {errors.cedula && <span className="block text-xs text-red-600 mt-1.5">{errors.cedula}</span>}
+                  {errors.cedula && <span className="block text-xs text-red-600 dark:text-red-400 mt-1.5">{errors.cedula}</span>}
                 </label>
                 <label>
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Teléfono</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Teléfono</span>
                   <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className={fieldClass('phone')} placeholder="0412-000-0000" />
-                  {errors.phone && <span className="block text-xs text-red-600 mt-1.5">{errors.phone}</span>}
+                  {errors.phone && <span className="block text-xs text-red-600 dark:text-red-400 mt-1.5">{errors.phone}</span>}
                 </label>
                 <label>
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Correo electrónico</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Correo electrónico</span>
                   <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={fieldClass('email')} placeholder="cliente@correo.com" />
-                  {errors.email && <span className="block text-xs text-red-600 mt-1.5">{errors.email}</span>}
+                  {errors.email && <span className="block text-xs text-red-600 dark:text-red-400 mt-1.5">{errors.email}</span>}
                 </label>
                 <label>
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Estado inicial</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Estado inicial</span>
                   <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Client['status'] })} className={fieldClass('status')}>
                     <option value="active">Cliente activo</option>
                     <option value="inactive">Cliente inactivo</option>
                   </select>
                 </label>
                 <label className="sm:col-span-2">
-                  <span className="block text-xs font-600 text-slate-700 mb-2">Dirección de residencia o entrega</span>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Dirección de residencia o entrega</span>
                   <textarea value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className={`${fieldClass('address')} min-h-24 resize-none`} placeholder="Urbanización, calle, edificio o casa y referencias" />
-                  {errors.address && <span className="block text-xs text-red-600 mt-1.5">{errors.address}</span>}
+                  {errors.address && <span className="block text-xs text-red-600 dark:text-red-400 mt-1.5">{errors.address}</span>}
                 </label>
               </div>
 
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100">
-                <p className="text-xs text-muted">El cliente se añadirá temporalmente a esta sesión.</p>
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-xs text-slate-500 dark:text-slate-400">El cliente se añadirá temporalmente a esta sesión.</p>
                 <div className="flex items-center gap-3">
-                  <button type="button" onClick={closeModal} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600 text-slate-600 hover:bg-slate-50">Cancelar</button>
-                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5]">Guardar cliente</button>
+                  <button type="button" onClick={closeModal} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar cliente</button>
                 </div>
               </div>
             </form>
@@ -754,24 +1159,24 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
 
       {modalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
-          <button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={() => setModalOpen(false)} />
-          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" />
-            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100">
-              <div className="flex gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue flex items-center justify-center"><Gamepad2 size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue uppercase">Operación de inventario</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Registrar nuevo alquiler</h3><p className="text-sm text-muted mt-1">Selecciona un artículo disponible y configura la operación.</p></div></div>
-              <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100"><X size={19} /></button>
+          <button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
+          <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue dark:text-blue-400 flex items-center justify-center"><Gamepad2 size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue dark:text-blue-400 uppercase">Operación de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nuevo alquiler</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Selecciona un artículo disponible y configura la operación.</p></div></div>
+              <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
             <form onSubmit={saveRental} className="p-7">
               <div className="grid sm:grid-cols-2 gap-5">
-                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 mb-2">Cliente</span><select required value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar cliente registrado</option>{CLIENTS.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 mb-2">Producto del inventario</span><select required value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar producto disponible</option>{rentableProducts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/día</option>)}</select></label>
-                {selectedProduct && <div className="sm:col-span-2 grid grid-cols-3 gap-3 rounded-2xl bg-slate-50 border border-slate-200 p-4"><div><span className="block text-[10px] text-muted uppercase">Tipo</span><strong className="text-sm text-gtext">{selectedProduct.category === 'console' ? 'Consola' : selectedProduct.category === 'game' ? 'Juego' : 'Accesorio'}</strong></div><div><span className="block text-[10px] text-muted uppercase">Especificación</span><strong className="text-sm text-gtext">{selectedProduct.description.split('·')[0]}</strong></div><div><span className="block text-[10px] text-muted uppercase">Disponibles</span><strong className="text-sm text-success">{selectedProduct.stock} unidades</strong></div></div>}
-                <label><span className="block text-xs font-600 text-slate-700 mb-2">Fecha de inicio</span><input type="date" required value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-                <label><span className="block text-xs font-600 text-slate-700 mb-2">Duración en días</span><input type="number" min="1" required value={form.days} onChange={e=>setForm({...form,days:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-                <label><span className="block text-xs font-600 text-slate-700 mb-2">Depósito de garantía</span><input type="number" min="0" value={form.deposit} onChange={e=>setForm({...form,deposit:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-                <div className="rounded-2xl bg-[#172033] text-white p-4"><span className="block text-xs text-white/60">Total estimado · vence {dueDate.toLocaleDateString('es-VE')}</span><strong className="font-display text-2xl">{fmtMoney(total)}</strong></div>
+                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente registrado</option>{CLIENTS.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label>
+                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto del inventario</span><select required value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar producto disponible</option>{rentableProducts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/día</option>)}</select></label>
+                {selectedProduct && <div className="sm:col-span-2 grid grid-cols-3 gap-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-4"><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Tipo</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.category === 'console' ? 'Consola' : selectedProduct.category === 'game' ? 'Juego' : 'Accesorio'}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Especificación</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.description.split('·')[0]}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Disponibles</span><strong className="text-sm text-emerald-600 dark:text-emerald-400">{selectedProduct.stock} unidades</strong></div></div>}
+                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de inicio</span><DatePicker value={form.startDate} onChange={val=>setForm({...form,startDate:val})} /></label>
+                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración en días</span><input type="number" min="1" required value={form.days} onChange={e=>setForm({...form,days:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Depósito de garantía</span><input type="number" min="0" value={form.deposit} onChange={e=>setForm({...form,deposit:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+                <div className="rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/80 border border-indigo-100 dark:border-indigo-900 text-slate-900 dark:text-white p-4"><span className="block text-xs text-slate-600 dark:text-white/70">Total estimado · vence {dueDate.toLocaleDateString('es-VE')}</span><strong className="font-display text-2xl text-indigo-600 dark:text-white">{fmtMoney(total)}</strong></div>
               </div>
-              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20">Confirmar alquiler</button></div>
+              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Confirmar alquiler</button></div>
             </form>
           </div>
         </div>
@@ -858,10 +1263,10 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
         </div>
       </div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center"><ShoppingBag size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-emerald-600 uppercase">Punto de venta</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Registrar nueva venta</h3><p className="text-sm text-muted mt-1">Agrega productos, valida existencias y confirma el pago.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100"><X size={19}/></button></div>
-      <form onSubmit={saveSale} className="p-7"><div className="grid lg:grid-cols-[1.35fr_.75fr] gap-7"><div><label><span className="block text-xs font-600 text-slate-700 mb-2">Cliente</span><select required value={clientName} onChange={e=>setClientName(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label><div className="mt-5 rounded-2xl border border-slate-200 overflow-hidden"><div className="px-4 py-3 bg-slate-50 border-b border-slate-200"><strong className="text-sm text-gtext">Productos disponibles</strong><span className="block text-xs text-muted">Define la cantidad de cada artículo</span></div><div className="max-h-[410px] overflow-y-auto divide-y divide-slate-100">{saleableProducts.map(p=><div key={p.id} className="flex items-center gap-4 px-4 py-3"><div className="flex-1 min-w-0"><span className="block text-sm font-600 text-gtext truncate">{p.name}</span><span className="text-xs text-muted">{p.brand} · Stock {p.stock}</span></div><strong className="text-sm text-blue">{fmtMoney(p.salePrice!)}</strong><div className="flex items-center rounded-lg border border-slate-200 overflow-hidden"><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)-1)} className="w-8 h-8 text-slate-500 hover:bg-slate-100">−</button><span className="w-8 text-center text-sm font-600">{cart[p.id]||0}</span><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)+1)} className="w-8 h-8 text-slate-500 hover:bg-slate-100">+</button></div></div>)}</div></div></div>
-      <div><div className="sticky top-0 rounded-2xl bg-[#172033] text-white p-5"><div className="text-[11px] font-700 tracking-[.14em] text-white/50 uppercase">Resumen de venta</div><div className="mt-5 space-y-3 max-h-44 overflow-y-auto">{cartItems.length?cartItems.map(({product,qty})=><div key={product.id} className="flex justify-between gap-3 text-sm"><span className="text-white/70 truncate">{qty}× {product.name}</span><span>{fmtMoney((product.salePrice||0)*qty)}</span></div>):<p className="text-sm text-white/45">Aún no hay productos.</p>}</div><div className="mt-5 pt-4 border-t border-white/10 space-y-3"><div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div><label className="flex items-center justify-between gap-3 text-sm text-white/60"><span>Descuento</span><input type="number" min="0" max={subtotal} value={discount} onChange={e=>setDiscount(Number(e.target.value))} className="w-24 px-2 py-1.5 rounded-lg bg-white/10 border border-white/15 text-right text-white" /></label><div className="flex justify-between items-end pt-2"><span className="text-sm text-white/60">Total</span><strong className="font-display text-3xl">{fmtMoney(total)}</strong></div></div></div><label className="block mt-5"><span className="block text-xs font-600 text-slate-700 mb-2">Método de pago</span><select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value as Sale['paymentMethod'])} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="cash">Efectivo</option><option value="card">Tarjeta</option><option value="transfer">Transferencia</option></select></label></div></div>
-      {error && <div className="mt-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}<div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100"><p className="text-xs text-muted">El stock se descontará al confirmar la operación.</p><div className="flex gap-3"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20">Confirmar venta</button></div></div></form></div></div>}
+      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><ShoppingBag size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-emerald-600 dark:text-emerald-400 uppercase">Punto de venta</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nueva venta</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Agrega productos, valida existencias y confirma el pago.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
+      <form onSubmit={saveSale} className="p-7"><div className="grid lg:grid-cols-[1.35fr_.75fr] gap-7"><div><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={clientName} onChange={e=>setClientName(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{CLIENTS.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label><div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 overflow-hidden shadow-sm"><div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between"><div><strong className="text-sm text-slate-900 dark:text-white">Productos disponibles</strong><span className="block text-xs text-slate-500 dark:text-slate-400">Define la cantidad de cada artículo</span></div></div><div className="max-h-[410px] overflow-y-auto p-2.5 space-y-2 bg-slate-50/70 dark:bg-slate-900">{saleableProducts.map(p=>{const qty=cart[p.id]||0; return (<div key={p.id} className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all ${qty>0?'bg-[#86CCC0]/15 border-[#86CCC0] dark:bg-[#86CCC0]/25 dark:border-[#86CCC0]/50 shadow-sm':'bg-white border-slate-200/90 hover:border-[#86CCC0]/60 dark:bg-slate-900 dark:border-slate-800'}`}><div className="flex-1 min-w-0"><span className="block text-sm font-600 text-slate-900 dark:text-white truncate">{p.name}</span><span className="text-xs text-slate-500 dark:text-slate-400">{p.brand} · Stock {p.stock}</span></div><strong className="text-sm text-[#0d9488] dark:text-[#86CCC0]">{fmtMoney(p.salePrice!)}</strong><div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-800 shadow-inner"><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)-1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">−</button><span className="w-9 text-center text-sm font-700 text-slate-900 dark:text-white bg-white dark:bg-slate-900 py-1 border-x border-slate-200 dark:border-slate-700">{cart[p.id]||0}</span><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)+1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">+</button></div></div>);})}</div></div></div>
+      <div><div className="sticky top-0 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white p-5 shadow-sm"><div className="text-[11px] font-700 tracking-[.14em] text-slate-500 dark:text-white/50 uppercase">Resumen de venta</div><div className="mt-5 space-y-3 max-h-44 overflow-y-auto">{cartItems.length?cartItems.map(({product,qty})=><div key={product.id} className="flex justify-between gap-3 text-sm"><span className="text-slate-600 dark:text-white/70 truncate">{qty}× {product.name}</span><span className="font-600 text-slate-900 dark:text-white">{fmtMoney((product.salePrice||0)*qty)}</span></div>):<p className="text-sm text-slate-400 dark:text-white/45">Aún no hay productos.</p>}</div><div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/10 space-y-3"><div className="flex justify-between text-sm text-slate-600 dark:text-white/60"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div><label className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-white/60"><span>Descuento</span><input type="number" min="0" max={subtotal} value={discount} onChange={e=>setDiscount(Number(e.target.value))} className="w-24 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-right text-slate-900 dark:text-white font-600" /></label><div className="flex justify-between items-end pt-2"><span className="text-sm text-slate-600 dark:text-white/60">Total</span><strong className="font-display text-3xl text-[#0d9488] dark:text-white">{fmtMoney(total)}</strong></div></div></div><label className="block mt-5"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Método de pago</span><select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value as Sale['paymentMethod'])} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option value="cash">Efectivo</option><option value="card">Tarjeta</option><option value="transfer">Transferencia</option></select></label></div></div>
+      {error && <div className="mt-5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}<div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">El stock se descontará al confirmar la operación.</p><div className="flex gap-3"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Confirmar venta</button></div></div></form></div></div>}
     </div>
   );
 }
@@ -927,16 +1332,16 @@ function DeliveriesSection({ inventory }: { inventory: Product[] }) {
         </div>
       </div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue flex items-center justify-center"><Truck size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue uppercase">Logística y despacho</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Crear nota de entrega</h3><p className="text-sm text-muted mt-1">Organiza los artículos, destino y responsable del despacho.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100"><X size={19}/></button></div>
+      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue dark:text-blue-400 flex items-center justify-center"><Truck size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue dark:text-blue-400 uppercase">Logística y despacho</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Crear nota de entrega</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Organiza los artículos, destino y responsable del despacho.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
       <form onSubmit={saveDelivery} className="p-7"><div className="grid lg:grid-cols-[1fr_.9fr] gap-7"><div className="space-y-5">
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Cliente destinatario</span><select required value={form.clientName} onChange={e=>selectClient(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Dirección de entrega</span><textarea required value={form.address} onChange={e=>setForm({...form,address:e.target.value})} className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Dirección completa y referencias" /></label>
-        <div className="grid sm:grid-cols-2 gap-4"><label><span className="block text-xs font-600 text-slate-700 mb-2">Fecha programada</span><input type="date" required value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label><label><span className="block text-xs font-600 text-slate-700 mb-2">Responsable</span><select required value={form.deliveredBy} onChange={e=>setForm({...form,deliveredBy:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="">Asignar repartidor</option><option>Pedro Gómez</option><option>Juan Castro</option><option>Andrés Moreno</option></select></label></div>
-        <div className="grid sm:grid-cols-2 gap-4"><label><span className="block text-xs font-600 text-slate-700 mb-2">Estado inicial</span><select value={form.status} onChange={e=>setForm({...form,status:e.target.value as DeliveryNote['status']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="pending">Pendiente</option><option value="delivered">Entregado</option><option value="failed">Fallido</option></select></label><label><span className="block text-xs font-600 text-slate-700 mb-2">Tipo de despacho</span><select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option>Entrega estándar</option><option>Entrega prioritaria</option><option>Retiro en tienda</option></select></label></div>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Instrucciones y observaciones</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Horario, persona autorizada, referencias o cuidados especiales" /></label>
-      </div><div><div className="rounded-2xl border border-slate-200 overflow-hidden"><div className="px-4 py-3 bg-slate-50 border-b border-slate-200"><strong className="text-sm text-gtext">Artículos del inventario</strong><span className="block text-xs text-muted mt-0.5">Selecciona uno o varios productos</span></div><div className="max-h-[390px] overflow-y-auto divide-y divide-slate-100">{inventory.filter(p=>p.stock>0).map(p=><label key={p.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={form.itemIds.includes(p.id)} onChange={()=>toggleItem(p.id)} className="w-4 h-4 accent-[#6153d6]"/><div className="flex-1 min-w-0"><span className="block text-sm font-500 text-gtext truncate">{p.name}</span><span className="text-xs text-muted">{p.brand} · Stock {p.stock}</span></div><Badge cls={p.category==='game'?'sale':p.brand.toLowerCase()}>{p.category==='console'?'Consola':p.category==='game'?'Juego':'Producto'}</Badge></label>)}</div><div className="px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-muted">{form.itemIds.length} artículo{form.itemIds.length===1?'':'s'} seleccionado{form.itemIds.length===1?'':'s'}</div></div></div></div>
-        {error && <div className="mt-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
-        <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20">Generar nota</button></div></form></div></div>}
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente destinatario</span><select required value={form.clientName} onChange={e=>selectClient(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Dirección de entrega</span><textarea required value={form.address} onChange={e=>setForm({...form,address:e.target.value})} className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors" placeholder="Dirección completa y referencias" /></label>
+        <div className="grid sm:grid-cols-2 gap-4"><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha programada</span><DatePicker value={form.date} onChange={val=>setForm({...form,date:val})} /></label><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Responsable</span><select required value={form.deliveredBy} onChange={e=>setForm({...form,deliveredBy:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Asignar repartidor</option><option>Pedro Gómez</option><option>Juan Castro</option><option>Andrés Moreno</option></select></label></div>
+        <div className="grid sm:grid-cols-2 gap-4"><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Estado inicial</span><select value={form.status} onChange={e=>setForm({...form,status:e.target.value as DeliveryNote['status']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option value="pending">Pendiente</option><option value="delivered">Entregado</option><option value="failed">Fallido</option></select></label><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tipo de despacho</span><select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option>Entrega estándar</option><option>Entrega prioritaria</option><option>Retiro en tienda</option></select></label></div>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Instrucciones y observaciones</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors" placeholder="Horario, persona autorizada, referencias o cuidados especiales" /></label>
+      </div><div><div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 overflow-hidden shadow-sm"><div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700"><strong className="text-sm text-slate-900 dark:text-white">Artículos del inventario</strong><span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">Selecciona uno o varios productos</span></div><div className="max-h-[390px] overflow-y-auto p-2.5 space-y-2 bg-slate-50/70 dark:bg-slate-900">{inventory.filter(p=>p.stock>0).map(p => { const isSelected = form.itemIds.includes(p.id); return (<label key={p.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-[#86CCC0]/15 border-[#86CCC0] dark:bg-[#86CCC0]/25 dark:border-[#86CCC0]/50 shadow-sm' : 'bg-white border-slate-200/90 hover:border-[#86CCC0]/60 dark:bg-slate-900 dark:border-slate-800'}`}><input type="checkbox" checked={isSelected} onChange={()=>toggleItem(p.id)} className="w-4 h-4 accent-[#86CCC0] rounded cursor-pointer"/><div className="flex-1 min-w-0"><span className={`block text-sm truncate ${isSelected ? 'font-700 text-slate-900 dark:text-white' : 'font-500 text-slate-800 dark:text-slate-200'}`}>{p.name}</span><span className="text-xs text-slate-500 dark:text-slate-400">{p.brand} · Stock {p.stock}</span></div><Badge cls={p.category==='game'?'sale':p.brand.toLowerCase()}>{p.category==='console'?'Consola':p.category==='game'?'Juego':'Producto'}</Badge></label>);})}</div><div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 text-xs font-600 text-slate-600 dark:text-slate-300 flex justify-between items-center"><span>{form.itemIds.length} artículo{form.itemIds.length===1?'':'s'} seleccionado{form.itemIds.length===1?'':'s'}</span>{form.itemIds.length > 0 && <span className="inline-block px-2 py-0.5 rounded-full bg-[#86CCC0] text-slate-900 font-bold text-[10px]">Seleccionado</span>}</div></div></div></div>
+        {error && <div className="mt-5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+        <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Generar nota</button></div></form></div></div>}
     </div>
   );
 }
@@ -1000,20 +1405,20 @@ function TechnicalSection() {
         </div>
       </div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center"><Wrench size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-amber-600 uppercase">Recepción técnica</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Crear orden de servicio</h3><p className="text-sm text-muted mt-1">Documenta el equipo, la falla reportada y la planificación inicial.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100"><X size={19}/></button></div>
+      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center"><Wrench size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-amber-600 dark:text-amber-400 uppercase">Recepción técnica</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Crear orden de servicio</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documenta el equipo, la falla reportada y la planificación inicial.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
       <form onSubmit={saveService} className="p-7"><div className="grid sm:grid-cols-2 gap-5">
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Cliente</span><select required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Dispositivo recibido</span><input required value={form.device} onChange={e=>setForm({...form,device:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Ej. PlayStation 5 Slim" /></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 mb-2">Falla reportada por el cliente</span><textarea required value={form.issue} onChange={e=>setForm({...form,issue:e.target.value})} className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Describe síntomas, errores, daños físicos y cuándo comenzó la falla" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Fecha de recepción</span><input type="date" required value={form.receiveDate} onChange={e=>setForm({...form,receiveDate:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Entrega estimada</span><input type="date" required value={form.estimatedDate} onChange={e=>setForm({...form,estimatedDate:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Técnico responsable</span><select required value={form.technician} onChange={e=>setForm({...form,technician:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="">Asignar técnico</option><option>Miguel Ángel</option><option>Roberto Silva</option><option>Daniel Rojas</option></select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Costo estimado</span><div className="relative"><DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"/><input type="number" min="0" step="0.01" value={form.cost} onChange={e=>setForm({...form,cost:Number(e.target.value)})} className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200" /></div></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Estado inicial</span><select value={form.status} onChange={e=>setForm({...form,status:e.target.value as TechService['status']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="received">Recibido</option><option value="diagnosing">En diagnóstico</option><option value="repairing">En reparación</option><option value="ready">Listo para entrega</option></select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Prioridad</span><select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 mb-2">Notas internas y condiciones de recepción</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Accesorios recibidos, estado físico, observaciones o diagnóstico preliminar" /></label>
-        {error && <div className="sm:col-span-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
-      </div><div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100"><p className="text-xs text-muted">Se generará un número de orden automáticamente.</p><div className="flex gap-3"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20">Crear orden técnica</button></div></div></form></div></div>}
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Dispositivo recibido</span><input required value={form.device} onChange={e=>setForm({...form,device:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. PlayStation 5 Slim" /></label>
+        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Falla reportada por el cliente</span><textarea required value={form.issue} onChange={e=>setForm({...form,issue:e.target.value})} className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Describe síntomas, errores, daños físicos y cuándo comenzó la falla" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de recepción</span><DatePicker value={form.receiveDate} onChange={val=>setForm({...form,receiveDate:val})} /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Entrega estimada</span><DatePicker value={form.estimatedDate} onChange={val=>setForm({...form,estimatedDate:val})} /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Técnico responsable</span><select required value={form.technician} onChange={e=>setForm({...form,technician:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="">Asignar técnico</option><option>Miguel Ángel</option><option>Roberto Silva</option><option>Daniel Rojas</option></select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Costo estimado</span><div className="relative"><DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="number" min="0" step="0.01" value={form.cost} onChange={e=>setForm({...form,cost:Number(e.target.value)})} className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></div></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Estado inicial</span><select value={form.status} onChange={e=>setForm({...form,status:e.target.value as TechService['status']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="received">Recibido</option><option value="diagnosing">En diagnóstico</option><option value="repairing">En reparación</option><option value="ready">Listo para entrega</option></select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Prioridad</span><select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
+        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Notas internas y condiciones de recepción</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Accesorios recibidos, estado físico, observaciones o diagnóstico preliminar" /></label>
+        {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+      </div><div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">Se generará un número de orden automáticamente.</p><div className="flex gap-3"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Crear orden técnica</button></div></div></form></div></div>}
     </div>
   );
 }
@@ -1079,18 +1484,18 @@ function WarrantiesSection({ inventory }: { inventory: Product[] }) {
         </div>
       </div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-[#f1efff] text-[#6153d6] flex items-center justify-center"><Shield size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] uppercase">Protección postventa</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Registrar nueva garantía</h3><p className="text-sm text-muted mt-1">Asocia un producto y define las condiciones de cobertura.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100"><X size={19}/></button></div>
+      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-[#f1efff] dark:bg-indigo-950/60 text-[#6153d6] dark:text-indigo-400 flex items-center justify-center"><Shield size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Protección postventa</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nueva garantía</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Asocia un producto y define las condiciones de cobertura.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
       <form onSubmit={saveWarranty} className="p-7"><div className="grid sm:grid-cols-2 gap-5">
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Cliente titular</span><select required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Producto cubierto</span><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-white text-sm"><option value="">Seleccionar del inventario</option>{inventory.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 mb-2">Número serial / identificador único</span><input required value={form.serial} onChange={e=>setForm({...form,serial:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono text-sm uppercase" placeholder="Ej. CFI-2015A-001928" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Fecha de compra</span><input type="date" required value={form.purchaseDate} onChange={e=>setForm({...form,purchaseDate:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Tipo de cobertura</span><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as Warranty['type']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value="store">Garantía de tienda</option><option value="manufacturer">Garantía del fabricante</option></select></label>
-        <label><span className="block text-xs font-600 text-slate-700 mb-2">Duración de cobertura</span><select value={form.months} onChange={e=>setForm({...form,months:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white"><option value={3}>3 meses</option><option value={6}>6 meses</option><option value={12}>12 meses</option><option value={24}>24 meses</option></select></label>
-        <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4"><span className="block text-[10px] uppercase tracking-wider text-muted">Vencimiento calculado</span><strong className="block font-display text-lg text-gtext mt-1">{expiry.toLocaleDateString('es-VE',{day:'2-digit',month:'long',year:'numeric'})}</strong></div>
-        {selectedProduct && <div className="sm:col-span-2 flex items-center gap-4 rounded-2xl bg-blue-50/60 border border-blue-100 p-4"><div className="w-10 h-10 rounded-xl bg-white text-blue flex items-center justify-center"><Package size={19}/></div><div><strong className="block text-sm text-gtext">{selectedProduct.name}</strong><span className="text-xs text-muted">{selectedProduct.brand} · {selectedProduct.description}</span></div></div>}
-        {error && <div className="sm:col-span-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
-      </div><div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20">Activar garantía</button></div></form></div></div>}
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente titular</span><select required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto cubierto</span><select required value={form.productId} onChange={e=>setForm({...form,productId:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar del inventario</option>{inventory.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Número serial / identificador único</span><input required value={form.serial} onChange={e=>setForm({...form,serial:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-sm uppercase" placeholder="Ej. CFI-2015A-001928" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de compra</span><DatePicker value={form.purchaseDate} onChange={val=>setForm({...form,purchaseDate:val})} /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tipo de cobertura</span><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as Warranty['type']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="store">Garantía de tienda</option><option value="manufacturer">Garantía del fabricante</option></select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración de cobertura</span><select value={form.months} onChange={e=>setForm({...form,months:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value={3}>3 meses</option><option value={6}>6 meses</option><option value={12}>12 meses</option><option value={24}>24 meses</option></select></label>
+        <div className="rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-4"><span className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Vencimiento calculado</span><strong className="block font-display text-lg text-slate-900 dark:text-white mt-1">{expiry.toLocaleDateString('es-VE',{day:'2-digit',month:'long',year:'numeric'})}</strong></div>
+        {selectedProduct && <div className="sm:col-span-2 flex items-center gap-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 p-4"><div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 text-blue dark:text-blue-400 flex items-center justify-center"><Package size={19}/></div><div><strong className="block text-sm text-slate-900 dark:text-white">{selectedProduct.name}</strong><span className="text-xs text-slate-500 dark:text-slate-400">{selectedProduct.brand} · {selectedProduct.description}</span></div></div>}
+        {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+      </div><div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Activar garantía</button></div></form></div></div>}
     </div>
   );
 }
@@ -1122,17 +1527,171 @@ function PurchasesSection({ inventory, setInventory }: { inventory: Product[]; s
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por producto o marca..." /></div>
       <div className="bg-card rounded-xl overflow-hidden border border-slate-200"><div className="table-scroll"><table className="w-full text-sm"><thead><tr>{['Producto','Tipo','Marca','Capacidad / Especificación','Stock','Venta','Alquiler / día','Modalidad'].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{filtered.map(p=><tr key={p.id} className="table-row-hover border-b border-slate-100 last:border-0"><td className="px-4 py-3 font-600 text-gtext whitespace-nowrap">{p.name}</td><td className="px-4 py-3 text-muted capitalize">{p.category === 'console' ? 'Consola' : p.category === 'game' ? 'Juego' : p.category === 'accessory' ? 'Accesorio' : 'Digital'}</td><td className="px-4 py-3"><Badge cls={p.brand.toLowerCase()}>{p.brand}</Badge></td><td className="px-4 py-3 text-muted max-w-[260px] truncate">{p.description}</td><td className="px-4 py-3"><span className={`font-700 ${p.stock<=2?'text-danger':'text-success'}`}>{p.stock}</span></td><td className="px-4 py-3 text-muted">{p.salePrice?fmtMoney(p.salePrice):'—'}</td><td className="px-4 py-3 text-blue font-600">{p.rentalPrice?fmtMoney(p.rentalPrice):'—'}</td><td className="px-4 py-3"><Badge cls={p.type}>{p.type==='both'?'Venta / Alquiler':p.type==='sale'?'Venta':'Alquiler'}</Badge></td></tr>)}</tbody></table></div></div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"><button className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#2563eb]" /><div className="flex justify-between px-7 pt-7 pb-5 border-b border-slate-100"><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] uppercase">Control de inventario</div><h3 className="font-display text-2xl font-700 text-gtext mt-1">Registrar producto</h3><p className="text-sm text-muted mt-1">Configura sus características comerciales y disponibilidad.</p></div><button onClick={()=>setModalOpen(false)} className="p-2 h-fit rounded-xl hover:bg-slate-100"><X size={19}/></button></div><form onSubmit={saveProduct} className="p-7 grid sm:grid-cols-2 gap-5">
-        <label className="sm:col-span-2"><span className="block text-xs font-600 mb-2">Nombre comercial</span><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Ej. PlayStation 5 Slim 1TB" /></label>
-        <label><span className="block text-xs font-600 mb-2">Tipo de producto</span><select value={form.category} onChange={e=>setForm({...form,category:e.target.value as Product['category']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200"><option value="console">Consola</option><option value="game">Videojuego</option><option value="accessory">Accesorio</option><option value="card">Digital</option></select></label>
-        <label><span className="block text-xs font-600 mb-2">Marca / Plataforma</span><select value={form.brand} onChange={e=>setForm({...form,brand:e.target.value as Product['brand']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200"><option>PS5</option><option>PS4</option><option>Xbox</option><option>Multi</option></select></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 mb-2">Capacidad y especificaciones</span><input required value={form.specification} onChange={e=>setForm({...form,specification:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" placeholder="Consola: 1TB SSD · Juego: edición/plataforma · Accesorio: color/conectividad" /></label>
-        <label><span className="block text-xs font-600 mb-2">Stock inicial</span><input type="number" min="0" required value={form.stock} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <label><span className="block text-xs font-600 mb-2">Modalidad</span><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as Product['type']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200"><option value="both">Venta y alquiler</option><option value="sale">Solo venta</option><option value="rental">Solo alquiler</option></select></label>
-        <label><span className="block text-xs font-600 mb-2">Precio de venta</span><input type="number" min="0" value={form.salePrice} onChange={e=>setForm({...form,salePrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <label><span className="block text-xs font-600 mb-2">Tarifa de alquiler / día</span><input type="number" min="0" value={form.rentalPrice} onChange={e=>setForm({...form,rentalPrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200" /></label>
-        <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-600">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600">Guardar producto</button></div>
+      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"><button className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Control de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar producto</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Configura sus características comerciales y disponibilidad.</p></div><button onClick={()=>setModalOpen(false)} className="p-2 h-fit rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div><form onSubmit={saveProduct} className="p-7 grid sm:grid-cols-2 gap-5">
+        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nombre comercial</span><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. PlayStation 5 Slim 1TB" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tipo de producto</span><select value={form.category} onChange={e=>setForm({...form,category:e.target.value as Product['category']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="console">Consola</option><option value="game">Videojuego</option><option value="accessory">Accesorio</option><option value="card">Digital</option></select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Marca / Plataforma</span><select value={form.brand} onChange={e=>setForm({...form,brand:e.target.value as Product['brand']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option>PS5</option><option>PS4</option><option>Xbox</option><option>Multi</option></select></label>
+        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Capacidad y especificaciones</span><input required value={form.specification} onChange={e=>setForm({...form,specification:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Consola: 1TB SSD · Juego: edición/plataforma · Accesorio: color/conectividad" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Stock inicial</span><input type="number" min="0" required value={form.stock} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Modalidad</span><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as Product['type']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="both">Venta y alquiler</option><option value="sale">Solo venta</option><option value="rental">Solo alquiler</option></select></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Precio de venta</span><input type="number" min="0" value={form.salePrice} onChange={e=>setForm({...form,salePrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tarifa de alquiler / día</span><input type="number" min="0" value={form.rentalPrice} onChange={e=>setForm({...form,rentalPrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+        <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar producto</button></div>
       </form></div></div>}
+    </div>
+  );
+}
+
+// ─── Admin: Contact & Location ───────────────────────────────────────────────
+
+function ContactLocationSection() {
+  const [messages] = useState<ContactMessage[]>(CONTACT_MESSAGES);
+  const [info, setInfo] = useState({
+    address: 'Av. Principal, Urb. Las Palmas, Quinta 5, Caracas 1050, Venezuela',
+    phone: '+58 (412) 555-1234',
+    whatsapp: '+58 (414) 999-0011',
+    email: 'contacto@gamevaultpro.com',
+    hours: 'Lunes a Sábado: 9:00 AM - 7:00 PM',
+  });
+  const [savedNotice, setSavedNotice] = useState(false);
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 3000);
+  };
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader
+        title="Ubicación y Contacto"
+        subtitle="Gestión de la ubicación del negocio, información de contacto y mensajes de clientes"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: Store Details & Interactive Map */}
+        <div className="space-y-6">
+          <div className="glow-card rounded-2xl p-6 bg-card">
+            <h3 className="font-display text-lg font-600 text-gtext mb-4 flex items-center gap-2">
+              <MapPin size={18} className="text-blue" /> Ubicación en el Mapa
+            </h3>
+            <div className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-inner relative bg-slate-900">
+              <iframe
+                title="Mapa de Ubicación GameVault"
+                src="https://maps.google.com/maps?q=Caracas,Venezuela&t=&z=13&ie=UTF8&iwloc=&output=embed"
+                width="100%"
+                height="100%"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+            <div className="mt-4 p-3 rounded-lg bg-surface flex items-start gap-3 text-xs text-muted">
+              <Navigation size={16} className="text-blue flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-gtext block">Punto de referencia:</strong>
+                A 50 metros del Centro Comercial, diagonal a la Estación de Metro. Estacionamiento privado disponible.
+              </div>
+            </div>
+          </div>
+
+          <div className="glow-card rounded-2xl p-6 bg-card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-lg font-600 text-gtext flex items-center gap-2">
+                <Phone size={18} className="text-purple-light" /> Datos de Contacto Público
+              </h3>
+              {savedNotice && <span className="text-xs text-success font-600">¡Guardado con éxito!</span>}
+            </div>
+            <form onSubmit={handleSave} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Dirección del Local</label>
+                <input
+                  type="text"
+                  value={info.address}
+                  onChange={e => setInfo({ ...info, address: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Teléfono Fijo / Móvil</label>
+                  <input
+                    type="text"
+                    value={info.phone}
+                    onChange={e => setInfo({ ...info, phone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">WhatsApp</label>
+                  <input
+                    type="text"
+                    value={info.whatsapp}
+                    onChange={e => setInfo({ ...info, whatsapp: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={info.email}
+                    onChange={e => setInfo({ ...info, email: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Horario de Atención</label>
+                  <input
+                    type="text"
+                    value={info.hours}
+                    onChange={e => setInfo({ ...info, hours: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl text-sm font-600 text-white bg-[#6153d6] hover:bg-[#5244be] transition-colors shadow-md"
+              >
+                Guardar Cambios de Contacto
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* Right Column: Customer Inquiries & Messages */}
+        <div className="space-y-6">
+          <div className="glow-card rounded-2xl p-6 bg-card">
+            <h3 className="font-display text-lg font-600 text-gtext mb-4 flex items-center gap-2">
+              <MessageSquare size={18} className="text-amber-500" /> Mensajes de Clientes Recibidos
+            </h3>
+            <div className="space-y-3">
+              {messages.map(m => (
+                <div key={m.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-surface flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-600 text-gtext text-sm">{m.name}</span>
+                    <span className={`badge ${m.status === 'unread' ? 'badge-overdue' : m.status === 'read' ? 'badge-pending' : 'badge-active'}`}>
+                      {m.status === 'unread' ? 'Nuevo' : m.status === 'read' ? 'Leído' : 'Respondido'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted flex items-center gap-3">
+                    <span><Mail size={10} className="inline mr-1" />{m.email}</span>
+                    <span><Phone size={10} className="inline mr-1" />{m.phone}</span>
+                    <span className="ml-auto">{m.date}</span>
+                  </div>
+                  <div className="font-500 text-xs text-gtext mt-1">Asunto: {m.subject}</div>
+                  <p className="text-xs text-muted bg-card p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700 leading-relaxed">
+                    "{m.message}"
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1148,13 +1707,126 @@ const SIDEBAR_ITEMS: { key: AdminSection; label: string; icon: React.ReactNode; 
   { key: 'technical', label: 'Servicio Técnico', icon: <Wrench size={18} />, count: TECH_SERVICES.filter(t=>t.status!=='delivered').length },
   { key: 'warranties', label: 'Garantías', icon: <Shield size={18} />, count: WARRANTIES.filter(w=>w.status==='active').length },
   { key: 'purchases', label: 'Inventario', icon: <Package size={18} />, count: PRODUCTS.filter(p=>p.stock<=2).length },
+  { key: 'contact', label: 'Ubicación y Contacto', icon: <MapPin size={18} /> },
 ];
 
-function AdminView() {
+function AdminLoginModal({ onLoginSuccess, navigateTo }: { onLoginSuccess: () => void; navigateTo: (v: View) => void }) {
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (username.trim().toLowerCase() === 'admin' && (password === 'admin' || password === 'admin123')) {
+      onLoginSuccess();
+    } else {
+      setError('Usuario o contraseña incorrectos. (Prueba admin / admin123)');
+    }
+  };
+
+  return (
+    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center p-4 hero-banner dark:bg-slate-950 transition-colors duration-200">
+      <div className="w-full max-w-md bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xl dark:shadow-2xl overflow-hidden animate-in fade-in duration-300">
+        <div className="h-2 bg-gradient-to-r from-[#6153d6] via-indigo-500 to-[#86CCC0]" />
+        
+        <div className="p-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl bg-blue-100/80 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center mb-4 shadow-sm border border-blue-200/70 dark:border-indigo-900/50">
+              <Shield size={32} />
+            </div>
+            <h2 className="font-display text-2xl font-700 text-slate-900 dark:text-white">Acceso Administrativo</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Ingresa tus credenciales para acceder al panel de control de GameVault Pro
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">
+                Usuario de Administrador
+              </label>
+              <div className="relative">
+                <Users size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={e => { setUsername(e.target.value); setError(''); }}
+                  placeholder="admin"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">
+                Contraseña
+              </label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setError(''); }}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-300 font-500 animate-in fade-in">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 px-4 rounded-xl bg-[#6153d6] hover:bg-[#5244be] text-white font-600 text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 mt-2"
+            >
+              Iniciar Sesión
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 text-center">
+            <button
+              type="button"
+              onClick={() => navigateTo('catalog')}
+              className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-500 transition-colors inline-flex items-center gap-1.5"
+            >
+              <Layers size={13} /> Volver al catálogo público
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('admin_authenticated') === 'true';
+  });
+
   const [section, setSection] = useState<AdminSection>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inventory, setInventory] = useState<Product[]>(PRODUCTS);
   const [rentals, setRentals] = useState<Rental[]>(RENTALS);
+
+  const handleLoginSuccess = () => {
+    sessionStorage.setItem('admin_authenticated', 'true');
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_authenticated');
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return <AdminLoginModal onLoginSuccess={handleLoginSuccess} navigateTo={navigateTo} />;
+  }
 
   const SectionContent = {
     dashboard: <Dashboard />,
@@ -1165,6 +1837,7 @@ function AdminView() {
     technical: <TechnicalSection />,
     warranties: <WarrantiesSection inventory={inventory} />,
     purchases: <PurchasesSection inventory={inventory} setInventory={setInventory} />,
+    contact: <ContactLocationSection />,
   }[section];
 
   return (
@@ -1177,14 +1850,14 @@ function AdminView() {
       {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-30 w-60 flex flex-col flex-shrink-0 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
-        style={{ background: '#ffffff', borderRight: '1px solid #e2e8f0', top: '64px', height: 'calc(100vh - 64px)' }}>
+        style={{ borderRight: '1px solid #e2e8f0', top: '64px', height: 'calc(100vh - 64px)' }}>
         <nav className="flex-1 py-4 overflow-y-auto">
           {SIDEBAR_ITEMS.map(item => {
             const active = section === item.key;
             return (
               <button key={item.key}
                 onClick={() => { setSection(item.key); setSidebarOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all relative ${active ? 'sidebar-item-active text-gtext font-600' : 'text-muted hover:text-gtext hover:bg-[rgba(139,92,246,0.05)]'}`}>
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all relative ${active ? 'sidebar-item-active font-600' : 'text-muted hover:text-gtext hover:bg-[rgba(139,92,246,0.05)]'}`}>
                 <span style={{ color: active ? '#a78bfa' : undefined }}>{item.icon}</span>
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.count !== undefined && item.count > 0 && (
@@ -1199,9 +1872,21 @@ function AdminView() {
         </nav>
 
         {/* Sidebar footer */}
-        <div className="p-4 border-t border-[rgba(139,92,246,0.1)]">
-          <div className="text-xs text-muted text-center">GameVault Pro v1.0</div>
-          <div className="text-[10px] text-muted text-center opacity-50 mt-0.5">Sistema de Gestión</div>
+        <div className="p-4 border-t border-[rgba(139,92,246,0.1)] flex flex-col gap-2">
+          <button
+            onClick={() => navigateTo('catalog')}
+            className="w-full py-2.5 px-3 rounded-xl bg-[#172033] dark:bg-indigo-600 text-white hover:bg-slate-800 dark:hover:bg-indigo-500 transition-colors text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <Layers size={14} className="text-white" /> Volver al Catálogo
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full py-2.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <LogOut size={14} className="text-red-600 dark:text-red-400 flex-shrink-0" /> Cerrar Sesión
+          </button>
+          <div className="text-xs text-muted text-center mt-1">GameVault Pro v1.0</div>
+          <div className="text-[10px] text-muted text-center opacity-50">Sistema de Gestión</div>
         </div>
       </aside>
 
@@ -1224,13 +1909,12 @@ function AdminView() {
 
 // ─── Top Navbar ───────────────────────────────────────────────────────────────
 
-function Navbar({ view, setView }: { view: View; setView: (v: View) => void }) {
+function Navbar({ navigateTo, darkMode, setDarkMode }: { navigateTo: (v: View) => void; darkMode: boolean; setDarkMode: React.Dispatch<React.SetStateAction<boolean>> }) {
   return (
-    <header className="navbar-blur fixed top-0 left-0 right-0 z-40 h-16 flex items-center px-6 gap-6">
+    <header className="navbar-blur fixed top-0 left-0 right-0 z-40 h-16 flex items-center px-6 gap-6 transition-colors duration-200">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 flex-shrink-0">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: '#172033', boxShadow: '0 2px 6px rgba(15,23,42,0.14)' }}>
+      <div onClick={() => navigateTo('catalog')} className="flex items-center gap-2.5 flex-shrink-0 cursor-pointer">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#172033] dark:bg-indigo-600 shadow-md">
           <Gamepad2 size={19} className="text-white" />
         </div>
         <div>
@@ -1254,32 +1938,86 @@ function Navbar({ view, setView }: { view: View; setView: (v: View) => void }) {
         </span>
       </div>
 
-      {/* View switcher */}
-      <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}>
-        <button onClick={() => setView('catalog')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-600 transition-all ${view === 'catalog' ? 'nav-btn-active text-white' : 'text-muted hover:text-gtext'}`}>
-          <Layers size={15} /> Catálogo
+      {/* Animated 2-option Theme Switcher */}
+      <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 relative text-xs font-600 shadow-inner select-none">
+        {/* Sliding background pill indicator */}
+        <div
+          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-[#6153d6] dark:bg-indigo-600 shadow-sm transition-all duration-300 ease-out ${
+            darkMode ? 'left-[calc(50%+2px)]' : 'left-1'
+          }`}
+        />
+        <button
+          type="button"
+          onClick={() => setDarkMode(false)}
+          className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition-colors duration-200 ${
+            !darkMode ? 'text-white font-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Sun size={14} className={!darkMode ? 'text-amber-300' : ''} /> Claro
         </button>
-        <button onClick={() => setView('admin')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-600 transition-all ${view === 'admin' ? 'nav-btn-active text-white' : 'text-muted hover:text-gtext'}`}>
-          <LayoutDashboard size={15} /> Administrador
+        <button
+          type="button"
+          onClick={() => setDarkMode(true)}
+          className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition-colors duration-200 ${
+            darkMode ? 'text-white font-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Moon size={14} className={darkMode ? 'text-amber-300' : ''} /> Oscuro
         </button>
       </div>
     </header>
+
   );
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [view, setView] = useState<View>('catalog');
+  const [view, setView] = useState<View>(() => {
+    return window.location.pathname.startsWith('/admin') ? 'admin' : 'catalog';
+  });
+
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved === 'dark';
+    return true; // Modo Oscuro predeterminado
+  });
+
+
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setView(window.location.pathname.startsWith('/admin') ? 'admin' : 'catalog');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (newView: View) => {
+    setView(newView);
+    const newPath = newView === 'admin' ? '/admin' : '/';
+    if (window.location.pathname !== newPath) {
+      window.history.pushState({}, '', newPath);
+    }
+  };
 
   return (
-    <div className="bg-bg min-h-screen">
-      <Navbar view={view} setView={setView} />
+    <div className="bg-bg min-h-screen text-gtext transition-colors duration-200">
+      <Navbar navigateTo={navigateTo} darkMode={darkMode} setDarkMode={setDarkMode} />
       <div className="pt-16">
-        {view === 'catalog' ? <CatalogView /> : <AdminView />}
+        {view === 'catalog' ? <CatalogView /> : <AdminView navigateTo={navigateTo} />}
       </div>
     </div>
   );
 }
+
