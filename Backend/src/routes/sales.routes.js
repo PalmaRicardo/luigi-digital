@@ -6,7 +6,12 @@ const router = Router();
 router.get('/', async (_req, res, next) => {
   try {
     const { rows } = await query('SELECT * FROM sales ORDER BY id DESC');
-    res.json(rows);
+    const { rows: items } = await query('SELECT * FROM sale_items');
+    const bySale = items.reduce((acc, i) => {
+      (acc[i.sale_id] = acc[i.sale_id] || []).push(i);
+      return acc;
+    }, {});
+    res.json(rows.map(s => ({ ...s, items: bySale[s.id] || [] })));
   } catch (err) { next(err); }
 });
 
@@ -45,19 +50,45 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const { client_id, client_name, date, subtotal, discount, total, payment_method } = req.body;
+    const { client_id, client_name, date, subtotal, discount, total, payment_method, items } = req.body;
     const { rows } = await query(
       `UPDATE sales SET client_id=$1, client_name=$2, date=$3, subtotal=$4, discount=$5, total=$6, payment_method=$7
        WHERE id=$8 RETURNING *`,
       [client_id || null, client_name, date, subtotal, discount || 0, total, payment_method, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Sale not found' });
+    if (Array.isArray(items)) {
+      // Restore stock from previous items, then apply the new ones
+      const oldItems = await query('SELECT * FROM sale_items WHERE sale_id = $1', [req.params.id]);
+      for (const item of oldItems.rows) {
+        if (item.product_id) {
+          await query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.qty, item.product_id]);
+        }
+      }
+      await query('DELETE FROM sale_items WHERE sale_id = $1', [req.params.id]);
+      for (const item of items) {
+        await query(
+          `INSERT INTO sale_items (sale_id, product_id, product_name, qty, price) VALUES ($1, $2, $3, $4, $5)`,
+          [req.params.id, item.product_id || null, item.product_name, item.qty || 1, item.price]
+        );
+        if (item.product_id) {
+          await query('UPDATE products SET stock = stock - $1 WHERE id = $2', [item.qty || 1, item.product_id]);
+        }
+      }
+    }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
 
 router.delete('/:id', async (req, res, next) => {
   try {
+    // Restore stock before deleting
+    const items = await query('SELECT * FROM sale_items WHERE sale_id = $1', [req.params.id]);
+    for (const item of items.rows) {
+      if (item.product_id) {
+        await query('UPDATE products SET stock = stock + $1 WHERE id = $2', [item.qty, item.product_id]);
+      }
+    }
     const { rowCount } = await query('DELETE FROM sales WHERE id = $1', [req.params.id]);
     if (!rowCount) return res.status(404).json({ message: 'Sale not found' });
     res.status(204).send();

@@ -20,11 +20,11 @@ router.get('/:id', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { name, category, brand, sale_price, rental_price, type, image, stock, description, featured } = req.body;
+    const { name, category, brand, sale_price, rental_price, type, image, stock, description, featured, active, offer_price } = req.body;
     const { rows } = await query(
-      `INSERT INTO products (name, category, brand, sale_price, rental_price, type, image, stock, description, featured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-      [name, category, brand, sale_price || null, rental_price || null, type, image || null, stock || 0, description || null, featured || false]
+      `INSERT INTO products (name, category, brand, sale_price, rental_price, type, image, stock, description, featured, active, offer_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      [name, category, brand, sale_price || null, rental_price || null, type, image || null, stock || 0, description || null, featured || false, active !== false, offer_price || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -32,11 +32,11 @@ router.post('/', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const { name, category, brand, sale_price, rental_price, type, image, stock, description, featured } = req.body;
+    const { name, category, brand, sale_price, rental_price, type, image, stock, description, featured, active, offer_price } = req.body;
     const { rows } = await query(
-      `UPDATE products SET name=$1, category=$2, brand=$3, sale_price=$4, rental_price=$5, type=$6, image=$7, stock=$8, description=$9, featured=$10
-       WHERE id=$11 RETURNING *`,
-      [name, category, brand, sale_price || null, rental_price || null, type, image || null, stock || 0, description || null, featured || false, req.params.id]
+      `UPDATE products SET name=$1, category=$2, brand=$3, sale_price=$4, rental_price=$5, type=$6, image=$7, stock=$8, description=$9, featured=$10, active=$11, offer_price=$12
+       WHERE id=$13 RETURNING *`,
+      [name, category, brand, sale_price || null, rental_price || null, type, image || null, stock || 0, description || null, featured || false, active !== false, offer_price || null, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Product not found' });
     res.json(rows[0]);

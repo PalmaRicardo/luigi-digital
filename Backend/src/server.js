@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { pool } from './config/db.js';
 
 import productRoutes from './routes/products.routes.js';
@@ -13,6 +14,8 @@ import warrantyRoutes from './routes/warranties.routes.js';
 import purchaseRoutes from './routes/purchases.routes.js';
 import contactRoutes from './routes/contact.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import uploadsRoutes from './routes/uploads.routes.js';
 
 dotenv.config();
 
@@ -32,6 +35,9 @@ app.use('/api/warranties', warrantyRoutes);
 app.use('/api/purchases', purchaseRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/uploads', uploadsRoutes);
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.get('/api/health', async (_req, res) => {
   try {

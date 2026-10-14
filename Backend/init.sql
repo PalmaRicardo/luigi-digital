@@ -2,6 +2,7 @@
 -- Run this file against your PostgreSQL database to create all tables.
 
 DROP TABLE IF EXISTS contact_messages CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS purchases CASCADE;
 DROP TABLE IF EXISTS warranties CASCADE;
 DROP TABLE IF EXISTS tech_services CASCADE;
@@ -25,6 +26,8 @@ CREATE TABLE products (
   stock INTEGER NOT NULL DEFAULT 0,
   description TEXT,
   featured BOOLEAN DEFAULT FALSE,
+  active BOOLEAN DEFAULT TRUE,
+  offer_price NUMERIC(10, 2),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -83,8 +86,11 @@ CREATE TABLE delivery_notes (
   client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
   client_name VARCHAR(255) NOT NULL,
   date DATE NOT NULL,
+  shipping_type VARCHAR(20) DEFAULT 'local' CHECK (shipping_type IN ('local', 'national')),
   address TEXT,
-  delivered_by VARCHAR(255),
+  state VARCHAR(100),
+  agency VARCHAR(50),
+  office_code VARCHAR(50),
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')),
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -135,6 +141,16 @@ CREATE TABLE purchases (
   date DATE NOT NULL,
   invoice_number VARCHAR(255),
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('received', 'pending', 'returned')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255),
+  role VARCHAR(20) DEFAULT 'admin' CHECK (role IN ('admin', 'staff')),
+  active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
