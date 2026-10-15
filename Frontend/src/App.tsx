@@ -4,8 +4,9 @@ import {
   Search, Plus, TrendingUp, Clock, AlertTriangle, CheckCircle2, Star, Tag,
   Phone, Mail, MapPin, Hash, DollarSign, ArrowUpRight, CreditCard,
   Menu, X, ChevronRight, ChevronLeft, Layers, RotateCcw, Clipboard, Monitor, Headphones, Gift, Disc3,
-  Sun, Moon, SlidersHorizontal, Send, Navigation, MessageSquare, Filter, Lock, LogOut, Edit3, Trash2, Eye, FileDown, Upload, CheckCircle
+  Sun, Moon, SlidersHorizontal, Send, Navigation, MessageSquare, Filter, Lock, LogOut, Edit3, Trash2, Eye, EyeOff, FileDown, Upload, CheckCircle
 } from 'lucide-react';
+import { confirmAction, alertError, alertSuccess, toast } from './alerts';
 import { api, useApiData, mapClient, mapRental, mapDelivery, mapTechService, mapWarranty, mapProduct } from './api';
 
 
@@ -379,130 +380,107 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CAT_MAP: Record<string, string> = { consoles: 'console', accessories: 'accessory', games: 'game', cards: 'card' };
 
-function ProductArtwork({ product }: { product: Product }) {
-  return (
-    <div className="product-art relative h-56 overflow-hidden product-art-container flex items-center justify-center p-1.5">
-      {/* Dark grid background pattern for contrast */}
-      <div className="absolute inset-0 bg-slate-950/80 product-art-grid opacity-30 pointer-events-none" />
-      <img
-        src={product.image}
-        alt={`Imagen referencial de ${product.name}`}
-        loading="lazy"
-        className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-700 rounded-xl relative z-0"
-      />
-      {/* Contrast vignette shadow overlay around image so white consoles pop cleanly */}
-      <div className="absolute inset-0 product-art-shadow-overlay pointer-events-none z-10" />
-      <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur border border-white/20 text-[9px] font-700 tracking-[0.16em] text-slate-100 shadow-md">
-        {product.category === 'card' ? 'ENTREGA DIGITAL' : 'IMAGEN REFERENCIAL'}
-      </div>
-    </div>
-  );
-}
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  all: <Layers size={15} />, consoles: <Gamepad2 size={15} />, accessories: <Headphones size={15} />,
+  games: <Disc3 size={15} />, cards: <CreditCard size={15} />,
+};
 
+type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'name';
+
+const priceOf = (p: Product) => {
+  const offer = p.offerPrice && p.salePrice && p.offerPrice < p.salePrice ? p.offerPrice : undefined;
+  return offer ?? p.salePrice ?? p.rentalPrice;
+};
 
 function ProductCard({ product }: { product: Product }) {
-  const brandBadge = product.brand === 'PS5' ? 'ps5' : product.brand === 'PS4' ? 'ps4' : product.brand === 'Xbox' ? 'xbox' : 'multi';
-  const typeBadge = product.type === 'sale' ? 'sale' : product.type === 'rental' ? 'rental' : 'both';
   const hasOffer = product.offerPrice !== undefined && product.salePrice !== undefined && product.offerPrice > 0 && product.offerPrice < product.salePrice;
   const discount = hasOffer ? Math.round((1 - product.offerPrice! / product.salePrice!) * 100) : 0;
   const effectiveSalePrice = hasOffer ? product.offerPrice! : product.salePrice;
+  const outOfStock = product.stock <= 0;
+  const lowStock = !outOfStock && product.stock <= 2;
+  const catLabel = { console: 'Consola', accessory: 'Accesorio', game: 'Juego', card: 'Tarjeta digital' }[product.category];
 
   return (
-    <div className="glow-card product-card rounded-2xl overflow-hidden bg-card flex flex-col group cursor-pointer">
-      <div className="relative">
-        <ProductArtwork product={product} />
-        {discount ? (
-          <div className="absolute top-4 right-4 px-2.5 py-1.5 rounded-full text-[10px] font-700 text-white bg-red-600 shadow-lg shadow-red-950/15">
-            -{discount}% OFF
-          </div>
-        ) : product.featured && (
-          <div className="absolute top-4 right-4 flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-700 text-amber-700 bg-amber-50 border border-amber-200">
-            <Star size={10} fill="currentColor" /> SELECCIÓN
+    <article className="shop-card group">
+      <div className="shop-card-media">
+        {product.image ? (
+          <img src={product.image} alt={product.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.06]" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600"><Gamepad2 size={56} /></div>
+        )}
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
+          {discount > 0 && <span className="shop-pill bg-rose-600 text-white">-{discount}%</span>}
+          {product.featured && !discount && <span className="shop-pill bg-amber-400 text-amber-950"><Star size={10} fill="currentColor" /> Top</span>}
+          {product.category === 'card' && <span className="shop-pill glass-pill">Digital</span>}
+        </div>
+        <span className="absolute top-3 right-3 shop-pill glass-pill">{product.brand}</span>
+        {outOfStock && (
+          <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px] flex items-center justify-center">
+            <span className="shop-pill bg-white text-slate-900 text-xs">Agotado</span>
           </div>
         )}
-        <div className="absolute bottom-4 left-4">
-          <Badge cls={brandBadge}>{product.brand}</Badge>
+        <div className="shop-card-cta">
+          <a href={`https://wa.me/?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`} target="_blank" rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur text-slate-900 dark:text-white text-xs font-700 hover:bg-white">
+            <MessageSquare size={14} /> Consultar
+          </a>
         </div>
-        {product.stock <= 2 && (
-          <div className="absolute bottom-4 right-4">
-            <span className="badge bg-red-50 text-red-700 border border-red-200">Últimas unidades</span>
-          </div>
-        )}
       </div>
 
-      {/* Info */}
-      <div className="p-4 flex flex-col flex-1 gap-2">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-display font-600 text-gtext text-[15px] leading-tight">{product.name}</h3>
-          <Badge cls={typeBadge}>{typeBadge === 'both' ? 'Venta/Alquiler' : typeBadge === 'sale' ? 'Venta' : 'Alquiler'}</Badge>
+      <div className="p-4 flex flex-col flex-1">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="text-[10px] font-700 uppercase tracking-[0.14em] text-muted">{catLabel}</span>
+          <span className="text-[10px] font-600 text-muted">
+            {product.type === 'both' ? 'Venta · Alquiler' : product.type === 'sale' ? 'Venta' : 'Alquiler'}
+          </span>
         </div>
-        <p className="text-xs text-muted leading-relaxed">{product.description}</p>
+        <h3 className="font-display font-600 text-gtext text-[15px] leading-snug line-clamp-2 min-h-[2.6em]">{product.name}</h3>
 
-        <div className="mt-auto pt-3 border-t border-[rgba(139,92,246,0.1)] flex flex-col gap-1">
-          {product.salePrice && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted flex items-center gap-1"><Tag size={11} /> Venta</span>
-              <span className="flex items-baseline gap-2">
-                {hasOffer && <span className="text-[11px] text-slate-400 line-through">{fmtMoney(product.salePrice!)}</span>}
-                <span className="font-display font-700 text-blue" style={{ fontSize: '17px' }}>{fmtMoney(effectiveSalePrice!)}</span>
-              </span>
+        <div className="mt-auto pt-3">
+          {effectiveSalePrice ? (
+            <div className="flex items-baseline gap-2">
+              <span className="font-display font-700 text-[22px] text-gtext">{fmtMoney(effectiveSalePrice)}</span>
+              {hasOffer && <span className="text-xs text-muted line-through">{fmtMoney(product.salePrice!)}</span>}
             </div>
-          )}
-          {product.rentalPrice && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted flex items-center gap-1"><Clock size={11} /> Alquiler/día</span>
-              <span className="font-display font-600 text-purple-light" style={{ fontSize: '15px' }}>{fmtMoney(product.rentalPrice)}</span>
+          ) : !product.rentalPrice ? (
+            <span className="font-display font-600 text-base text-gtext">Consultar precio</span>
+          ) : null}
+          {product.rentalPrice ? (
+            <div className="text-xs text-muted mt-0.5 flex items-center gap-1">
+              <Clock size={11} /> Alquiler <strong className="text-gtext">{fmtMoney(product.rentalPrice)}</strong>/día
             </div>
-          )}
-          <div className="flex items-center justify-between mt-1">
-            <span className="text-[11px] text-muted">Stock: <span className="text-gtext font-600">{product.stock}</span></span>
-            <button className="text-[12px] font-600 text-blue hover:text-blue-light transition-colors flex items-center gap-0.5">
-              Ver detalle <ChevronRight size={12} />
-            </button>
+          ) : null}
+          <div className="mt-3 flex items-center gap-1.5 text-[11px] font-600">
+            <span className={`w-1.5 h-1.5 rounded-full ${outOfStock ? 'bg-rose-500' : lowStock ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+            <span className={outOfStock ? 'text-rose-500' : lowStock ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400'}>
+              {outOfStock ? 'Sin stock' : lowStock ? `Últimas ${product.stock} unidades` : 'En stock'}
+            </span>
           </div>
         </div>
       </div>
+    </article>
+  );
+}
+
+function FilterGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="py-5 border-b border-[var(--c-border)] last:border-0">
+      <h4 className="text-[11px] font-700 uppercase tracking-[0.14em] text-muted mb-3">{title}</h4>
+      {children}
     </div>
   );
 }
 
-const HERO_SHOWCASE: Record<string, { tag: string; title: string; subtitle: string; image: string; icon: React.ReactNode }> = {
-  consoles: {
-    tag: 'DESTACADO · CONSOLAS',
-    title: 'PlayStation 5 & Xbox Series X',
-    subtitle: 'Potencia de nueva generación a 4K@120fps',
-    image: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1100&h=850&fit=crop&auto=format',
-    icon: <Gamepad2 size={20} />
-  },
-  accessories: {
-    tag: 'DESTACADO · ACCESORIOS',
-    title: 'Controles DualSense & Headsets',
-    subtitle: 'Vibración háptica, audio 3D y gatillos adaptativos',
-    image: 'https://images.unsplash.com/photo-1754594207981-8b97210a6d3a?w=1100&h=850&fit=crop&auto=format',
-    icon: <Headphones size={20} />
-  },
-  games: {
-    tag: 'DESTACADO · JUEGOS',
-    title: 'Títulos Estreno & Exclusivos',
-    subtitle: 'Mundos abiertos, acción y aventuras inolvidables',
-    image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1100&h=850&fit=crop&auto=format',
-    icon: <Disc3 size={20} />
-  },
-  cards: {
-    tag: 'DESTACADO · DIGITAL',
-    title: 'Tarjetas PSN & Game Pass',
-    subtitle: 'Entrega digital instantánea y membresías',
-    image: 'https://images.unsplash.com/photo-1607082349566-187342175e2f?w=1100&h=850&fit=crop&auto=format',
-    icon: <CreditCard size={20} />
-  },
-  all: {
-    tag: 'DESTACADO · GAMING 2026',
-    title: 'PlayStation 5 Disc Edition',
-    subtitle: 'Potencia de nueva generación con soporte 4K',
-    image: 'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1100&h=850&fit=crop&auto=format',
-    icon: <Gamepad2 size={20} />
-  }
-};
+function FilterOption({ active, onClick, label, count, icon }: { active: boolean; onClick: () => void; label: string; count?: number; icon?: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${active ? 'bg-[#6153d6] text-white font-600 shadow-sm shadow-[#6153d6]/30' : 'text-gtext hover:bg-[var(--c-row-hover)]'}`}>
+      {icon && <span className={active ? 'text-white' : 'text-muted'}>{icon}</span>}
+      <span className="flex-1 text-left">{label}</span>
+      {count !== undefined && <span className={`text-[11px] font-600 ${active ? 'text-white/80' : 'text-muted'}`}>{count}</span>}
+    </button>
+  );
+}
 
 function CatalogView() {
   const [category, setCategory] = useState<CatalogCategory>('all');
@@ -511,236 +489,205 @@ function CatalogView() {
   const [search, setSearch] = useState('');
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
-  const [showPriceFilter, setShowPriceFilter] = useState<boolean>(false);
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [sort, setSort] = useState<SortKey>('featured');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [products] = useApiData<Product[]>(api.products.list, []);
 
-  const heroData = HERO_SHOWCASE[category] || HERO_SHOWCASE.all;
+  const visible = useMemo(() => products.filter(p => p.active !== false), [products]);
 
   const filtered = useMemo(() => {
-    return products.filter(p => {
-      if (p.active === false) return false;
+    const q = search.toLowerCase();
+    const list = visible.filter(p => {
       if (category !== 'all' && p.category !== CAT_MAP[category]) return false;
       if (filter === 'sale' && p.type === 'rental') return false;
       if (filter === 'rental' && p.type === 'sale') return false;
       if (brand !== 'all' && p.brand !== brand) return false;
-
-      const price = p.salePrice ?? p.rentalPrice ?? 0;
+      if (inStockOnly && p.stock <= 0) return false;
+      const price = priceOf(p) ?? 0;
       if (minPrice !== '' && price < Number(minPrice)) return false;
       if (maxPrice !== '' && price > Number(maxPrice)) return false;
-
-      if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.description.toLowerCase().includes(search.toLowerCase())) return false;
+      if (q && !p.name.toLowerCase().includes(q) && !p.description.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [products, category, filter, brand, search, minPrice, maxPrice]);
+    const sorted = [...list];
+    if (sort === 'price-asc') sorted.sort((a, b) => (priceOf(a) ?? Infinity) - (priceOf(b) ?? Infinity));
+    if (sort === 'price-desc') sorted.sort((a, b) => (priceOf(b) ?? -1) - (priceOf(a) ?? -1));
+    if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'featured') sorted.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
+    return sorted;
+  }, [visible, category, filter, brand, search, minPrice, maxPrice, inStockOnly, sort]);
 
-  const hasActiveFilters = category !== 'all' || filter !== 'all' || brand !== 'all' || search !== '' || minPrice !== '' || maxPrice !== '';
+  const countFor = (cat: CatalogCategory) => cat === 'all' ? visible.length : visible.filter(p => p.category === CAT_MAP[cat]).length;
+  const hasActiveFilters = category !== 'all' || filter !== 'all' || brand !== 'all' || search !== '' || minPrice !== '' || maxPrice !== '' || inStockOnly;
 
   const clearFilters = () => {
-    setCategory('all');
-    setFilter('all');
-    setBrand('all');
-    setSearch('');
-    setMinPrice('');
-    setMaxPrice('');
+    setCategory('all'); setFilter('all'); setBrand('all'); setSearch('');
+    setMinPrice(''); setMaxPrice(''); setInStockOnly(false);
   };
+
+  const filterPanel = (
+    <div>
+      <div className="pb-5 border-b border-[var(--c-border)]">
+        <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
+      </div>
+      <FilterGroup title="Categorías">
+        <div className="space-y-1">
+          {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
+            <FilterOption key={cat} active={category === cat} onClick={() => setCategory(cat)} label={CATEGORY_LABELS[cat]} count={countFor(cat)} icon={CATEGORY_ICONS[cat]} />
+          ))}
+        </div>
+      </FilterGroup>
+      <FilterGroup title="Plataforma">
+        <div className="grid grid-cols-2 gap-2">
+          {(['all', 'PS5', 'PS4', 'Xbox'] as BrandFilter[]).map(b => (
+            <button key={b} type="button" onClick={() => setBrand(b)}
+              className={`px-3 py-2 rounded-lg text-xs font-600 border transition-all ${brand === b ? 'bg-[#6153d6] border-[#6153d6] text-white' : 'border-[var(--c-border)] text-gtext hover:border-[#6153d6]'}`}>
+              {b === 'all' ? 'Todas' : b}
+            </button>
+          ))}
+        </div>
+      </FilterGroup>
+      <FilterGroup title="Modalidad">
+        <div className="flex p-1 rounded-xl bg-[var(--c-row-hover)]">
+          {(['all', 'sale', 'rental'] as FilterType[]).map(f => (
+            <button key={f} type="button" onClick={() => setFilter(f)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-600 transition-all ${filter === f ? 'bg-[var(--c-card)] text-gtext shadow-sm' : 'text-muted hover:text-gtext'}`}>
+              {f === 'all' ? 'Todos' : f === 'sale' ? 'Venta' : 'Alquiler'}
+            </button>
+          ))}
+        </div>
+      </FilterGroup>
+      <FilterGroup title="Precio (USD)">
+        <div className="flex items-center gap-2">
+          <input type="number" min="0" placeholder="Mín" value={minPrice} onChange={e => setMinPrice(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-[var(--c-input-border)] bg-[var(--c-input-bg)] text-gtext text-sm" />
+          <span className="text-muted">—</span>
+          <input type="number" min="0" placeholder="Máx" value={maxPrice} onChange={e => setMaxPrice(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-[var(--c-input-border)] bg-[var(--c-input-bg)] text-gtext text-sm" />
+        </div>
+      </FilterGroup>
+      <FilterGroup title="Disponibilidad">
+        <label className="flex items-center justify-between cursor-pointer text-sm text-gtext">
+          Solo con stock
+          <span className={`relative w-10 h-6 rounded-full transition-colors ${inStockOnly ? 'bg-[#6153d6]' : 'bg-slate-300 dark:bg-slate-700'}`}>
+            <input type="checkbox" checked={inStockOnly} onChange={e => setInStockOnly(e.target.checked)} className="sr-only" />
+            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${inStockOnly ? 'left-5' : 'left-1'}`} />
+          </span>
+        </label>
+      </FilterGroup>
+      {hasActiveFilters && (
+        <button type="button" onClick={clearFilters} className="w-full mt-2 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-700 flex items-center justify-center gap-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+          <RotateCcw size={13} /> Limpiar filtros
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-bg transition-colors duration-200">
-      {/* Hero Banner */}
-      <div className="relative overflow-hidden bg-blue-50/80 dark:bg-slate-900 border-b border-blue-100 dark:border-slate-800 hero-banner">
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(circle at 85% 20%, rgba(99,102,241,0.12), transparent 45%), radial-gradient(circle at 15% 85%, rgba(37,99,235,0.10), transparent 45%)'
-        }} />
-        <div className="relative max-w-7xl mx-auto px-6 py-10 md:py-14">
-          <div className="grid lg:grid-cols-[0.9fr_1.1fr] items-center gap-10 lg:gap-14">
-            <div className="max-w-xl">
-              <div className="flex items-center gap-2 mb-5">
-                <span className="badge badge-sale">Colección 2026</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Equipos seleccionados</span>
+      {/* Hero */}
+      <section className="relative overflow-hidden">
+        <img src="https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1800&h=900&fit=crop&auto=format" alt="Consola de videojuegos" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-slate-950/20" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-20">
+          <div className="max-w-2xl">
+            <span className="glass-pill shop-pill mb-5">Colección 2026 · Envíos a toda Venezuela</span>
+            <h1 className="font-display font-700 text-4xl md:text-6xl text-white leading-[1.05] tracking-[-0.03em]">
+              Tu próxima partida <span className="bg-gradient-to-r from-[#a5a0ff] to-[#86CCC0] bg-clip-text text-transparent">empieza aquí.</span>
+            </h1>
+            <p className="mt-5 text-white/75 text-base md:text-lg max-w-lg">Consolas, controles, juegos y tarjetas digitales con garantía y soporte especializado.</p>
+            <a href="#tienda" className="inline-flex items-center gap-2 mt-7 px-6 py-3 rounded-xl bg-white text-slate-900 text-sm font-700 hover:bg-white/90 transition-colors">
+              <ShoppingBag size={16} /> Ver productos
+            </a>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 mt-12 max-w-4xl">
+            {[
+              { icon: <Shield size={18} />, title: 'Garantía real', text: 'Hasta 12 meses en equipos seleccionados.' },
+              { icon: <Truck size={18} />, title: 'Envíos nacionales', text: 'MRW, Tealca, Zoom y entregas locales.' },
+              { icon: <Wrench size={18} />, title: 'Servicio técnico', text: 'Diagnóstico y reparación especializada.' },
+            ].map(f => (
+              <div key={f.title} className="liquid-glass p-5">
+                <div className="flex items-center gap-2 text-white font-display font-600">{f.icon}{f.title}</div>
+                <p className="text-white/70 text-sm mt-2 leading-relaxed">{f.text}</p>
               </div>
-              <h1 className="font-display font-700 text-4xl md:text-5xl lg:text-[56px] text-slate-900 dark:text-white leading-[1.04] mb-5 tracking-[-0.035em]">
-                Tu próxima partida empieza <span className="text-[#5488D6]">aquí.</span>
-              </h1>
-              <p className="text-slate-600 dark:text-slate-300 text-base md:text-lg leading-relaxed max-w-lg">
-                Consolas, controles y videojuegos seleccionados para ofrecer rendimiento, garantía y una experiencia de compra especializada.
-              </p>
-
-              {/* Dynamic Hero Buttons */}
-              <div className="flex flex-wrap items-center gap-3 mt-7">
-                <button
-                  onClick={() => setCategory(category === 'consoles' ? 'all' : 'consoles')}
-                  className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${
-                    category === 'consoles' || category === 'all'
-                      ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]'
-                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'
-                  }`}
-                >
-                  <Gamepad2 size={16} /> Explorar consolas
-                </button>
-                <button
-                  onClick={() => setCategory(category === 'accessories' ? 'all' : 'accessories')}
-                  className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${
-                    category === 'accessories'
-                      ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]'
-                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'
-                  }`}
-                >
-                  <Headphones size={16} /> Ver accesorios
-                </button>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mt-9 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">{products.length}+</strong><span className="text-xs text-slate-500 dark:text-slate-400">Productos</span></div>
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">12 meses</strong><span className="text-xs text-slate-500 dark:text-slate-400">Garantía</span></div>
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">Soporte</strong><span className="text-xs text-slate-500 dark:text-slate-400">Especializado</span></div>
-              </div>
-            </div>
-
-            {/* Dynamic Animated Hero Showcase Card */}
-            <div className="relative lg:min-h-[430px]">
-              <div key={category} className="hero-animate hero-photo relative h-[340px] sm:h-[420px] overflow-hidden rounded-[28px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
-                <img
-                  src={heroData.image}
-                  alt={heroData.title}
-                  className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
-                <div className="absolute left-6 bottom-6 text-white max-w-md">
-                  <span className="text-[10px] font-700 tracking-[0.18em] text-white bg-[#5488D6] border border-[#5488D6]/60 px-2.5 py-1 rounded-full inline-block mb-2 shadow-sm">
-                    {heroData.tag}
-                  </span>
-                  <div className="font-display text-2xl md:text-3xl font-700 leading-tight text-white">{heroData.title}</div>
-                  <div className="text-sm text-white/80 mt-1">{heroData.subtitle}</div>
-                </div>
-              </div>
-              <div className="absolute -left-4 sm:-left-7 top-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 p-3 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue dark:text-blue-400 flex items-center justify-center">{heroData.icon}</div>
-                <div><div className="text-xs text-slate-500 dark:text-slate-400">Disponible para</div><div className="text-sm font-600 text-slate-900 dark:text-white">Venta y alquiler</div></div>
-              </div>
-              <div className="absolute -right-2 sm:-right-5 bottom-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 px-4 py-3">
-                <div className="flex items-center gap-1 text-amber-500 mb-1"><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /></div>
-                <div className="text-xs font-600 text-slate-900 dark:text-white">Productos verificados</div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-      </div>
+      </section>
 
-
-      {/* Sticky Bar Filters */}
-      <div className="sticky top-[64px] z-30 border-b border-slate-200 dark:border-slate-800 sticky-filter-bar backdrop-blur-md bg-white/90 dark:bg-slate-900/90">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col gap-3 py-3">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
-              {/* Category tabs */}
-              <div className="flex items-center gap-1 flex-wrap">
-                {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
-                  <button key={cat} onClick={() => setCategory(cat)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-500 transition-all ${category === cat ? 'bg-[#5488D6] text-white shadow-sm shadow-[#5488D6]/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                    {CATEGORY_LABELS[cat]}
-                  </button>
-                ))}
-              </div>
-
-              {/* Brand and Type Filters */}
-              <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
-                {/* Brand selector */}
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  {(['all', 'PS5', 'PS4', 'Xbox'] as BrandFilter[]).map(b => (
-                    <button key={b} onClick={() => setBrand(b)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${brand === b ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
-                      {b === 'all' ? 'Marcas' : b}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Modality filter */}
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-[#5488D6]/10 dark:bg-[#5488D6]/15 border border-[#5488D6]/25 dark:border-[#5488D6]/30">
-                  {(['all', 'sale', 'rental'] as FilterType[]).map(f => (
-                    <button key={f} onClick={() => setFilter(f)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${filter === f ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
-                      {f === 'all' ? 'Todos' : f === 'sale' ? 'Venta' : 'Alquiler'}
-                    </button>
-                  ))}
-                </div>
-
-
-                {/* Toggle Price Filter Panel */}
-                <button
-                  onClick={() => setShowPriceFilter(!showPriceFilter)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-600 transition-colors ${showPriceFilter || minPrice || maxPrice ? 'bg-blue/10 border-blue text-blue dark:text-indigo-400' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}
-                >
-                  <SlidersHorizontal size={14} /> Precios
-                </button>
-
-                {/* Search input */}
-                <div className="w-full sm:w-64">
-                  <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
-                </div>
-              </div>
-            </div>
-
-            {/* Price Filter Sub-panel */}
-            {showPriceFilter && (
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-4 text-xs animate-in fade-in duration-200">
-                <span className="font-600 text-slate-800 dark:text-slate-200 flex items-center gap-1">
-                  <Tag size={13} className="text-blue dark:text-indigo-400" /> Rango de Precio ($):
-                </span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    placeholder="Mín $"
-                    value={minPrice}
-                    onChange={e => setMinPrice(e.target.value)}
-                    className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                  />
-                  <span className="text-slate-500">-</span>
-                  <input
-                    type="number"
-                    placeholder="Máx $"
-                    value={maxPrice}
-                    onChange={e => setMaxPrice(e.target.value)}
-                    className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                  />
-                </div>
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="ml-auto text-xs font-600 text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"
-                  >
-                    <RotateCcw size={12} /> Limpiar filtros
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-
-      {/* Products Grid */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-5">
-          <p className="text-sm text-muted">{filtered.length} producto{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</p>
-          {hasActiveFilters && !showPriceFilter && (
-            <button onClick={clearFilters} className="text-xs text-red-600 font-600 hover:underline flex items-center gap-1">
-              <RotateCcw size={12} /> Limpiar filtros
+      {/* Category strip */}
+      <div className="border-b border-[var(--c-border)] bg-[var(--c-card)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-2 overflow-x-auto py-3 no-scrollbar">
+          {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
+            <button key={cat} onClick={() => setCategory(cat)}
+              className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-600 border transition-all ${category === cat ? 'bg-[#6153d6] border-[#6153d6] text-white' : 'border-[var(--c-border)] text-gtext hover:border-[#6153d6]'}`}>
+              {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Shop */}
+      <div id="tienda" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex gap-8 scroll-mt-20">
+        <aside className="hidden lg:block w-64 flex-shrink-0 !bg-transparent">
+          <div className="sticky top-24 rounded-2xl bg-[var(--c-card)] border border-[var(--c-border)] p-5 shadow-[var(--c-shadow)]">
+            <div className="flex items-center gap-2 font-display font-700 text-gtext pb-4"><SlidersHorizontal size={16} /> Filtros</div>
+            {filterPanel}
+          </div>
+        </aside>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+            <div>
+              <h2 className="font-display text-2xl font-700 text-gtext">{CATEGORY_LABELS[category]}</h2>
+              <p className="text-sm text-muted">{filtered.length} producto{filtered.length !== 1 ? 's' : ''}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setDrawerOpen(true)} className="lg:hidden flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--c-border)] bg-[var(--c-card)] text-sm font-600 text-gtext">
+                <Filter size={15} /> Filtros {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-[#6153d6]" />}
+              </button>
+              <select value={sort} onChange={e => setSort(e.target.value as SortKey)}
+                className="px-3.5 py-2.5 rounded-xl border border-[var(--c-border)] bg-[var(--c-card)] text-sm font-500 text-gtext">
+                <option value="featured">Destacados</option>
+                <option value="price-asc">Precio: menor a mayor</option>
+                <option value="price-desc">Precio: mayor a menor</option>
+                <option value="name">Nombre A-Z</option>
+              </select>
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="text-center py-24 text-muted rounded-2xl border border-dashed border-[var(--c-border)]">
+              <Gamepad2 size={48} className="mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-600 text-gtext">No se encontraron productos</p>
+              <p className="text-sm mt-1">Ajusta los filtros o la búsqueda</p>
+              {hasActiveFilters && <button onClick={clearFilters} className="mt-4 text-sm font-600 text-[#6153d6] hover:underline">Limpiar filtros</button>}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-5">
+              {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
           )}
         </div>
-        {filtered.length === 0 ? (
-          <div className="text-center py-24 text-muted">
-            <Gamepad2 size={48} className="mx-auto mb-4 opacity-20" />
-            <p className="text-lg">No se encontraron productos</p>
-            <p className="text-sm mt-1">Intenta ajustando los filtros de precio o búsqueda</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-
-            {filtered.map(p => <ProductCard key={p.id} product={p} />)}
-          </div>
-        )}
       </div>
+
+      {/* Mobile filter drawer */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-[90] lg:hidden">
+          <button aria-label="Cerrar filtros" className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-[86%] max-w-sm bg-[var(--c-card)] p-5 overflow-y-auto shadow-2xl animate-[slideIn_.25s_ease-out]">
+            <div className="flex items-center justify-between pb-4">
+              <span className="flex items-center gap-2 font-display font-700 text-gtext"><SlidersHorizontal size={16} /> Filtros</span>
+              <button onClick={() => setDrawerOpen(false)} className="p-2 rounded-lg hover:bg-[var(--c-row-hover)] text-muted"><X size={18} /></button>
+            </div>
+            {filterPanel}
+            <button onClick={() => setDrawerOpen(false)} className="w-full mt-4 py-3 rounded-xl bg-[#6153d6] text-white text-sm font-700">
+              Ver {filtered.length} resultados
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -876,7 +823,7 @@ function ClientsSection() {
   };
 
   const deleteClient = async (c: Client) => {
-    if (!window.confirm(`¿Eliminar al cliente "${c.name}"? Sus registros históricos se conservarán.`)) return;
+    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar al cliente "${c.name}"? Sus registros históricos se conservarán.`)) return;
     try {
       await api.clients.remove(c.id);
       setClients(current => current.filter(x => x.id !== c.id));
@@ -1089,7 +1036,7 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
   };
 
   const deleteRental = async (r: Rental) => {
-    if (!window.confirm(`¿Eliminar el alquiler de ${r.clientName} (${r.product})?`)) return;
+    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar el alquiler de ${r.clientName} (${r.product})?`)) return;
     try {
       await api.rentals.remove(r.id);
       setRentals(current => current.filter(x => x.id !== r.id));
@@ -1227,15 +1174,22 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
   const [deliveryFor, setDeliveryFor] = useState<Sale | null>(null);
   const [noteError, setNoteError] = useState('');
   const [error, setError] = useState('');
-  const saleableProducts = inventory.filter(p => p.salePrice && p.stock > 0 && p.type !== 'rental' && p.active !== false);
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [productSearch, setProductSearch] = useState('');
+  // Todos los productos activos aparecen, tengan o no precio. El precio se puede ajustar en la venta.
+  const saleableProducts = inventory
+    .filter(p => p.type !== 'rental' && p.active !== false)
+    .filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()))
+    .sort((a, b) => Number(b.stock > 0) - Number(a.stock > 0));
   const effectivePrice = (p: Product) => (p.offerPrice && p.salePrice && p.offerPrice < p.salePrice) ? p.offerPrice : p.salePrice;
-  const cartItems = Object.entries(cart).filter(([, qty]) => qty > 0).map(([id, qty]) => ({ product: inventory.find(p=>p.id===id)!, qty }));
-  const subtotal = cartItems.reduce((sum, item) => sum + (effectivePrice(item.product) ?? 0) * item.qty, 0);
+  const unitPrice = (p: Product) => prices[p.id] ?? effectivePrice(p) ?? 0;
+  const cartItems = Object.entries(cart).filter(([, qty]) => qty > 0).map(([id, qty]) => ({ product: inventory.find(p=>p.id===id)!, qty })).filter(i => i.product);
+  const subtotal = cartItems.reduce((sum, item) => sum + unitPrice(item.product) * item.qty, 0);
   const total = Math.max(0, subtotal - Number(discount || 0));
   const filtered = sales.filter(s => !search || s.clientName.toLowerCase().includes(search.toLowerCase()));
   const totalRevenue = filtered.reduce((sum, s) => sum + s.total, 0);
   const setQuantity = (product: Product, quantity: number) => setCart(current => ({ ...current, [product.id]: Math.max(0, Math.min(product.stock, quantity)) }));
-  const resetSaleForm = () => { setEditingId(null); setClientName(''); setCart({}); setDiscount(0); setPaymentMethod('cash'); setWithDelivery(false); setShip(EMPTY_SHIP); setError(''); };
+  const resetSaleForm = () => { setEditingId(null); setClientName(''); setCart({}); setDiscount(0); setPaymentMethod('cash'); setWithDelivery(false); setShip(EMPTY_SHIP); setError(''); setPrices({}); setProductSearch(''); };
 
   const openEdit = (s: Sale) => {
     resetSaleForm();
@@ -1244,17 +1198,19 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
     setDiscount(s.discount);
     setPaymentMethod(s.paymentMethod);
     const newCart: Record<string, number> = {};
+    const newPrices: Record<string, number> = {};
     (s.items || []).forEach(item => {
       const prod = item.product_id != null ? inventory.find(p => p.id === String(item.product_id)) : undefined;
       const byName = prod || inventory.find(p => p.name === item.product_name);
-      if (byName) newCart[byName.id] = item.qty;
+      if (byName) { newCart[byName.id] = item.qty; newPrices[byName.id] = item.price; }
     });
     setCart(newCart);
+    setPrices(newPrices);
     setModalOpen(true);
   };
 
   const deleteSale = async (s: Sale) => {
-    if (!window.confirm(`¿Eliminar la venta #${s.id} de ${s.clientName}? El stock se devolverá al inventario.`)) return;
+    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar la venta #${s.id} de ${s.clientName}? El stock se devolverá al inventario.`)) return;
     try {
       await api.sales.remove(s.id);
       setSales(current => current.filter(x => x.id !== s.id));
@@ -1282,8 +1238,10 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
     if (!clientName || !cartItems.length) { setError('Selecciona un cliente y agrega al menos un producto.'); return; }
     if (discount > subtotal) { setError('El descuento no puede superar el subtotal.'); return; }
     if (!editingId && withDelivery && !validateShip(ship)) { setError(ship.type === 'local' ? 'Completa la dirección de entrega.' : 'Para el envío nacional completa estado, agencia y código de oficina.'); return; }
+    if (cartItems.some(({ product }) => unitPrice(product) <= 0) &&
+      !await confirmAction('Productos sin precio', 'Hay productos con precio $0.00. ¿Deseas registrar la venta de todas formas?', { confirmText: 'Sí, continuar', danger: false })) return;
     const client = clients.find(c => c.name === clientName);
-    const itemsPayload = cartItems.map(({ product, qty }) => ({ product_id: Number(product.id) || null, product_name: product.name, qty, price: effectivePrice(product) ?? 0 }));
+    const itemsPayload = cartItems.map(({ product, qty }) => ({ product_id: Number(product.id) || null, product_name: product.name, qty, price: unitPrice(product) }));
     const body = { client_id: client ? Number(client.id) : null, client_name: clientName, date: today, subtotal, discount: Number(discount), total, payment_method: paymentMethod, items: itemsPayload };
     try {
       if (editingId) {
@@ -1305,7 +1263,7 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
   return (
     <div>
       <SectionHeader title="Ventas" subtitle={`${sales.length} ventas · Total: ${fmtMoney(sales.reduce((s,x)=>s+x.total,0))}`} action={<AddBtn label="Nueva Venta" onClick={()=>{ resetSaleForm(); setModalOpen(true); }} />} />
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {[
           { label: 'Total Ingresos', val: fmtMoney(totalRevenue), color: '#10b981' },
           { label: 'Venta Promedio', val: fmtMoney(filtered.length ? totalRevenue / filtered.length : 0), color: '#38bdf8' },
@@ -1360,8 +1318,8 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
       </div>
 
       {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><ShoppingBag size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-emerald-600 dark:text-emerald-400 uppercase">Punto de venta</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">{editingId ? `Editar venta #${editingId}` : 'Registrar nueva venta'}</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Agrega productos, valida existencias y confirma el pago.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
-      <form onSubmit={saveSale} className="p-7"><div className="grid lg:grid-cols-[1.35fr_.75fr] gap-7"><div><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={clientName} onChange={e=>{ setClientName(e.target.value); const c = clients.find(x=>x.name===e.target.value); if (c) setShip(s => ({ ...s, address: c.address })); }} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{clients.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label><div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 overflow-hidden shadow-sm"><div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between"><div><strong className="text-sm text-slate-900 dark:text-white">Productos disponibles</strong><span className="block text-xs text-slate-500 dark:text-slate-400">Define la cantidad de cada artículo</span></div></div><div className="max-h-[410px] overflow-y-auto p-2.5 space-y-2 bg-slate-50/70 dark:bg-slate-900">{saleableProducts.map(p=>{const qty=cart[p.id]||0; return (<div key={p.id} className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all ${qty>0?'bg-[#86CCC0]/15 border-[#86CCC0] dark:bg-[#86CCC0]/25 dark:border-[#86CCC0]/50 shadow-sm':'bg-white border-slate-200/90 hover:border-[#86CCC0]/60 dark:bg-slate-900 dark:border-slate-800'}`}><div className="flex-1 min-w-0"><span className="block text-sm font-600 text-slate-900 dark:text-white truncate">{p.name}</span><span className="text-xs text-slate-500 dark:text-slate-400">{p.brand} · Stock {p.stock}</span></div><strong className="text-sm text-[#0d9488] dark:text-[#86CCC0]">{fmtMoney(effectivePrice(p)!)}</strong><div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-800 shadow-inner"><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)-1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">−</button><span className="w-9 text-center text-sm font-700 text-slate-900 dark:text-white bg-white dark:bg-slate-900 py-1 border-x border-slate-200 dark:border-slate-700">{cart[p.id]||0}</span><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)+1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">+</button></div></div>);})}</div></div></div>
-      <div><div className="sticky top-0 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white p-5 shadow-sm"><div className="text-[11px] font-700 tracking-[.14em] text-slate-500 dark:text-white/50 uppercase">Resumen de venta</div><div className="mt-5 space-y-3 max-h-44 overflow-y-auto">{cartItems.length?cartItems.map(({product,qty})=><div key={product.id} className="flex justify-between gap-3 text-sm"><span className="text-slate-600 dark:text-white/70 truncate">{qty}× {product.name}</span><span className="font-600 text-slate-900 dark:text-white">{fmtMoney((effectivePrice(product)||0)*qty)}</span></div>):<p className="text-sm text-slate-400 dark:text-white/45">Aún no hay productos.</p>}</div><div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/10 space-y-3"><div className="flex justify-between text-sm text-slate-600 dark:text-white/60"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div><label className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-white/60"><span>Descuento</span><input type="number" min="0" max={subtotal} value={discount} onChange={e=>setDiscount(Number(e.target.value))} className="w-24 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-right text-slate-900 dark:text-white font-600" /></label><div className="flex justify-between items-end pt-2"><span className="text-sm text-slate-600 dark:text-white/60">Total</span><strong className="font-display text-3xl text-[#0d9488] dark:text-white">{fmtMoney(total)}</strong></div></div></div><label className="block mt-5"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Método de pago</span><select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value as Sale['paymentMethod'])} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option value="cash">Efectivo</option><option value="card">Tarjeta</option><option value="transfer">Transferencia</option></select></label>
+      <form onSubmit={saveSale} className="p-7"><div className="grid lg:grid-cols-[1.35fr_.75fr] gap-7"><div><label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={clientName} onChange={e=>{ setClientName(e.target.value); const c = clients.find(x=>x.name===e.target.value); if (c) setShip(s => ({ ...s, address: c.address })); }} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{clients.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label><div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 overflow-hidden shadow-sm"><div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between"><div><strong className="text-sm text-slate-900 dark:text-white">Productos disponibles</strong><span className="block text-xs text-slate-500 dark:text-slate-400">Define cantidad y precio de cada artículo</span></div><div className="w-44 sm:w-56"><SearchBar value={productSearch} onChange={setProductSearch} placeholder="Buscar..." /></div></div><div className="max-h-[410px] overflow-y-auto p-2.5 space-y-2 bg-slate-50/70 dark:bg-slate-900">{saleableProducts.length===0 && <p className="text-center text-sm text-slate-500 py-8">No hay productos que coincidan.</p>}{saleableProducts.map(p=>{const qty=cart[p.id]||0; const noStock=p.stock<=0; const noPrice=!effectivePrice(p); return (<div key={p.id} className={`flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 px-4 py-3 rounded-xl border transition-all ${noStock?'opacity-55':''} ${qty>0?'bg-[#86CCC0]/15 border-[#86CCC0] dark:bg-[#86CCC0]/25 dark:border-[#86CCC0]/50 shadow-sm':'bg-white border-slate-200/90 hover:border-[#86CCC0]/60 dark:bg-slate-900 dark:border-slate-800'}`}><div className="flex-1 min-w-[140px]"><span className="block text-sm font-600 text-slate-900 dark:text-white truncate">{p.name}</span><span className="text-xs text-slate-500 dark:text-slate-400">{p.brand} · {noStock ? <span className="text-rose-500 font-600">Sin stock</span> : `Stock ${p.stock}`}{noPrice && <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-600">· Sin precio</span>}</span></div><label className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 shadow-sm focus-within:border-[#86CCC0]" title="Precio unitario (editable)"><span className="text-xs font-700 text-slate-400">$</span><input type="number" min="0" step="0.01" inputMode="decimal" value={prices[p.id] ?? effectivePrice(p) ?? ''} placeholder="0.00" onChange={e=>{const v=e.target.value; setPrices(cur=>{const n={...cur}; if(v==='') delete n[p.id]; else n[p.id]=Math.max(0,Number(v)); return n;});}} className="w-20 bg-transparent !border-0 !shadow-none p-0 text-sm font-700 text-right text-[#0d9488] dark:text-[#86CCC0] focus:!ring-0" /></label><div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-800 shadow-inner"><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)-1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">−</button><span className="w-9 text-center text-sm font-700 text-slate-900 dark:text-white bg-white dark:bg-slate-900 py-1 border-x border-slate-200 dark:border-slate-700">{cart[p.id]||0}</span><button type="button" onClick={()=>setQuantity(p,(cart[p.id]||0)+1)} className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors font-bold">+</button></div></div>);})}</div></div></div>
+      <div><div className="sticky top-0 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white p-5 shadow-sm"><div className="text-[11px] font-700 tracking-[.14em] text-slate-500 dark:text-white/50 uppercase">Resumen de venta</div><div className="mt-5 space-y-3 max-h-44 overflow-y-auto">{cartItems.length?cartItems.map(({product,qty})=><div key={product.id} className="flex justify-between gap-3 text-sm"><span className="text-slate-600 dark:text-white/70 truncate">{qty}× {product.name}</span><span className="font-600 text-slate-900 dark:text-white">{fmtMoney(unitPrice(product)*qty)}</span></div>):<p className="text-sm text-slate-400 dark:text-white/45">Aún no hay productos.</p>}</div><div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/10 space-y-3"><div className="flex justify-between text-sm text-slate-600 dark:text-white/60"><span>Subtotal</span><span>{fmtMoney(subtotal)}</span></div><label className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-white/60"><span>Descuento</span><input type="number" min="0" max={subtotal} value={discount} onChange={e=>setDiscount(Number(e.target.value))} className="w-24 px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-right text-slate-900 dark:text-white font-600" /></label><div className="flex justify-between items-end pt-2"><span className="text-sm text-slate-600 dark:text-white/60">Total</span><strong className="font-display text-3xl text-[#0d9488] dark:text-white">{fmtMoney(total)}</strong></div></div></div><label className="block mt-5"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Método de pago</span><select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value as Sale['paymentMethod'])} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm hover:border-[#86CCC0] transition-colors"><option value="cash">Efectivo</option><option value="card">Tarjeta</option><option value="transfer">Transferencia</option></select></label>
       {!editingId && <label className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-4 py-3 cursor-pointer"><input type="checkbox" checked={withDelivery} onChange={e=>setWithDelivery(e.target.checked)} className="w-4 h-4 accent-[#6153d6]" /><span className="text-sm font-600 text-slate-700 dark:text-slate-200 flex items-center gap-2"><Truck size={15} className="text-blue" /> Generar nota de entrega automática</span></label>}
       {!editingId && withDelivery && <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4"><ShippingFields value={ship} onChange={setShip} /></div>}
       </div></div>
@@ -1536,7 +1494,7 @@ function DeliveriesSection({ inventory }: { inventory: Product[] }) {
   };
 
   const deleteDelivery = async (d: DeliveryNote) => {
-    if (!window.confirm(`¿Eliminar la nota de entrega #${d.id} de ${d.clientName}?`)) return;
+    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar la nota de entrega #${d.id} de ${d.clientName}?`)) return;
     try {
       await api.deliveries.remove(d.id);
       setDeliveries(current => current.filter(x => x.id !== d.id));
@@ -1894,7 +1852,7 @@ function PurchasesSection({ inventory, setInventory }: { inventory: Product[]; s
   };
 
   const deleteProduct = async (p: Product) => {
-    if (!window.confirm(`¿Eliminar "${p.name}" del inventario?`)) return;
+    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar "${p.name}" del inventario?`)) return;
     try {
       await api.products.remove(p.id);
       setInventory(current => current.filter(x => x.id !== p.id));
@@ -2124,101 +2082,86 @@ const buildSidebarItems = (c: { clients: number; rentalsActive: number; sales: n
 function AdminLoginModal({ onLoginSuccess, navigateTo }: { onLoginSuccess: () => void; navigateTo: (v: View) => void }) {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { token } = await api.auth.login(username.trim(), password);
+      const { token, user } = await api.auth.login(username.trim(), password);
       sessionStorage.setItem('admin_token', token);
+      await alertSuccess('¡Bienvenido!', `Sesión iniciada como ${user?.name || username}`);
       onLoginSuccess();
     } catch (err) {
-      setError(err instanceof Error && err.message !== 'Failed to fetch'
-        ? err.message
-        : 'No se pudo conectar con el servidor. Verifica que el backend esté activo.');
+      const offline = !(err instanceof Error) || err.message === 'Failed to fetch';
+      setPassword('');
+      alertError(
+        offline ? 'Sin conexión' : 'Credenciales incorrectas',
+        offline ? 'No se pudo conectar con el servidor. Verifica que el backend esté activo.' : 'El usuario o la contraseña no son válidos. Inténtalo de nuevo.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center p-4 hero-banner dark:bg-slate-950 transition-colors duration-200">
-      <div className="w-full max-w-md bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xl dark:shadow-2xl overflow-hidden animate-in fade-in duration-300">
-        <div className="h-2 bg-gradient-to-r from-[#6153d6] via-indigo-500 to-[#86CCC0]" />
-        
-        <div className="p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-blue-100/80 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center mb-4 shadow-sm border border-blue-200/70 dark:border-indigo-900/50">
-              <Shield size={32} />
+    <div className="min-h-[calc(100vh-64px)] grid lg:grid-cols-2 bg-[var(--c-card)]">
+      {/* Visual panel */}
+      <div className="relative hidden lg:flex flex-col justify-end p-10 overflow-hidden">
+        <img src="https://images.unsplash.com/photo-1593305841991-05c297ba4575?w=1400&h=1600&fit=crop&auto=format" alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-slate-950/10" />
+        <div className="relative">
+          <h2 className="font-display text-4xl font-700 text-white leading-tight max-w-md">Gestiona tu tienda gamer desde un solo lugar.</h2>
+          <div className="grid grid-cols-2 gap-4 mt-8 max-w-lg">
+            <div className="liquid-glass p-5">
+              <div className="flex items-center gap-2 text-white font-600 text-sm"><Package size={16} /> Inventario</div>
+              <p className="text-white/70 text-xs mt-2 leading-relaxed">Control de stock, precios y ofertas en tiempo real.</p>
             </div>
-            <h2 className="font-display text-2xl font-700 text-slate-900 dark:text-white">Acceso Administrativo</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Ingresa tus credenciales para acceder al panel de control de Luigi Digital
-            </p>
+            <div className="liquid-glass p-5">
+              <div className="flex items-center gap-2 text-white font-600 text-sm"><TrendingUp size={16} /> Ventas</div>
+              <p className="text-white/70 text-xs mt-2 leading-relaxed">Ventas, alquileres y notas de entrega integradas.</p>
+            </div>
           </div>
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Form panel */}
+      <div className="flex items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-sm">
+          <div className="w-11 h-11 rounded-xl bg-slate-900 dark:bg-white flex items-center justify-center mb-8">
+            <Gamepad2 size={20} className="text-white dark:text-slate-900" />
+          </div>
+          <h1 className="font-display text-3xl font-700 text-gtext tracking-tight">Iniciar sesión</h1>
+          <p className="text-sm text-muted mt-2">Accede al panel administrativo de Luigi Digital.</p>
+
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             <div>
-              <label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">
-                Usuario de Administrador
-              </label>
+              <label htmlFor="login-user" className="block text-sm font-500 text-gtext mb-1.5">Usuario</label>
+              <input id="login-user" type="text" required autoComplete="username" value={username} onChange={e => setUsername(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-[var(--c-input-border)] bg-[var(--c-input-bg)] text-gtext" />
+            </div>
+            <div>
+              <label htmlFor="login-pass" className="block text-sm font-500 text-gtext mb-1.5">Contraseña</label>
               <div className="relative">
-                <Users size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={e => { setUsername(e.target.value); setError(''); }}
-                  placeholder="admin"
-                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm"
-                />
+                <input id="login-pass" type={showPassword ? 'text' : 'password'} required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"
+                  className="w-full pl-3.5 pr-10 py-2.5 text-sm rounded-lg border border-[var(--c-input-border)] bg-[var(--c-input-bg)] text-gtext" />
+                <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-muted hover:text-gtext">
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">
-                Contraseña
-              </label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError(''); }}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-300 font-500 animate-in fade-in">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-xl bg-[#6153d6] hover:bg-[#5244be] disabled:opacity-60 disabled:cursor-not-allowed text-white font-600 text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 mt-2"
-            >
-              {loading ? 'Verificando...' : 'Iniciar Sesión'}
+            <button id="login-submit" type="submit" disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-600 hover:opacity-90 disabled:opacity-60 transition-opacity flex items-center justify-center gap-2">
+              {loading ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Lock size={15} />}
+              {loading ? 'Verificando...' : 'Entrar'}
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 text-center">
-            <button
-              type="button"
-              onClick={() => navigateTo('catalog')}
-              className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-500 transition-colors inline-flex items-center gap-1.5"
-            >
-              <Layers size={13} /> Volver al catálogo público
-            </button>
-          </div>
+          <button type="button" onClick={() => navigateTo('catalog')} className="mt-8 text-sm text-muted hover:text-gtext inline-flex items-center gap-1.5">
+            <ChevronLeft size={15} /> Volver a la tienda
+          </button>
         </div>
       </div>
     </div>
@@ -2255,11 +2198,32 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (!await confirmAction('¿Cerrar sesión?', 'Tendrás que ingresar tus credenciales nuevamente.', { confirmText: 'Sí, salir', danger: false })) return;
     sessionStorage.removeItem('admin_authenticated');
     sessionStorage.removeItem('admin_token');
     setIsAuthenticated(false);
+    toast.success('Sesión cerrada correctamente');
   };
+
+  // Etiqueta cada celda con su encabezado para que las tablas se apilen como tarjetas en móvil.
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const root = mainRef.current;
+    if (!root) return;
+    const label = () => root.querySelectorAll('table').forEach(table => {
+      const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent?.trim() ?? '');
+      table.querySelectorAll('tbody tr').forEach(tr => {
+        Array.from(tr.children).forEach((td, i) => {
+          if (heads[i] !== undefined && td.getAttribute('data-label') !== heads[i]) td.setAttribute('data-label', heads[i]);
+        });
+      });
+    });
+    label();
+    const obs = new MutationObserver(label);
+    obs.observe(root, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [isAuthenticated, section]);
 
   if (!isAuthenticated) {
     return <AdminLoginModal onLoginSuccess={handleLoginSuccess} navigateTo={navigateTo} />;
@@ -2286,20 +2250,20 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-60 flex flex-col flex-shrink-0 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
-        style={{ borderRight: '1px solid #e2e8f0', top: '64px', height: 'calc(100vh - 64px)' }}>
-        <nav className="flex-1 py-4 overflow-y-auto">
+        className={`admin-sidebar fixed lg:static inset-y-0 left-0 z-30 w-64 flex flex-col flex-shrink-0 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        style={{ top: '64px', height: 'calc(100vh - 64px)' }}>
+        <div className="sb-label px-5 pt-5 pb-2 text-[10px] font-700 tracking-[0.16em] uppercase">Menú principal</div>
+        <nav className="flex-1 px-3 pb-4 overflow-y-auto space-y-0.5">
           {SIDEBAR_ITEMS.map(item => {
             const active = section === item.key;
             return (
               <button key={item.key}
                 onClick={() => { setSection(item.key); setSidebarOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all relative ${active ? 'sidebar-item-active font-600' : 'text-muted hover:text-gtext hover:bg-[rgba(139,92,246,0.05)]'}`}>
-                <span style={{ color: active ? '#a78bfa' : undefined }}>{item.icon}</span>
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${active ? 'sb-item-active font-600' : 'sb-item'}`}>
+                <span>{item.icon}</span>
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.count !== undefined && item.count > 0 && (
-                  <span className="text-[10px] font-700 px-1.5 py-0.5 rounded-full"
-                    style={{ background: active ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', color: active ? '#c4b5fd' : '#7c6fa8' }}>
+                  <span className={`text-[10px] font-700 px-1.5 py-0.5 rounded-full ${active ? 'bg-white/20 text-white' : 'sb-count'}`}>
                     {item.count}
                   </span>
                 )}
@@ -2309,26 +2273,25 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
         </nav>
 
         {/* Sidebar footer */}
-        <div className="p-4 border-t border-[rgba(139,92,246,0.1)] flex flex-col gap-2">
+        <div className="sb-footer p-4 border-t flex flex-col gap-2">
           <button
             onClick={() => navigateTo('catalog')}
-            className="w-full py-2.5 px-3 rounded-xl bg-[#172033] dark:bg-indigo-600 text-white hover:bg-slate-800 dark:hover:bg-indigo-500 transition-colors text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"
+            className="w-full py-2.5 px-3 rounded-lg sb-btn transition-colors text-xs font-600 flex items-center justify-center gap-1.5"
           >
-            <Layers size={14} className="text-white" /> Volver al Catálogo
+            <Layers size={14} /> Volver a la tienda
           </button>
           <button
             onClick={handleLogout}
-            className="w-full py-2.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"
+            className="w-full py-2.5 px-3 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-all text-xs font-600 flex items-center justify-center gap-1.5"
           >
-            <LogOut size={14} className="text-red-600 dark:text-red-400 flex-shrink-0" /> Cerrar Sesión
+            <LogOut size={14} className="flex-shrink-0" /> Cerrar sesión
           </button>
-          <div className="text-xs text-muted text-center mt-1">Luigi Digital v1.0</div>
-          <div className="text-[10px] text-muted text-center opacity-50">Sistema de Gestión</div>
+          <div className="sb-label text-[10px] text-center mt-1">Luigi Digital v1.0 · Sistema de Gestión</div>
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto bg-bg">
+      <main ref={mainRef} className="flex-1 min-w-0 overflow-y-auto bg-bg">
         {/* Mobile sidebar toggle */}
         <div className="lg:hidden flex items-center gap-3 p-4 border-b border-[rgba(139,92,246,0.1)]">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg text-muted hover:text-gtext" style={{ background: 'rgba(139,92,246,0.08)' }}>
@@ -2336,7 +2299,7 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
           </button>
           <span className="text-sm font-600 text-gtext">{SIDEBAR_ITEMS.find(i=>i.key===section)?.label}</span>
         </div>
-        <div className="p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {SectionContent}
         </div>
       </main>

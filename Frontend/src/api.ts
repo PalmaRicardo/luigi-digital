@@ -3,6 +3,7 @@
 // Falls back gracefully when the backend is unreachable.
 
 import { useEffect, useState } from 'react';
+import { toast } from './alerts';
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || 'https://luigii.enigmastudioss.com';
 
@@ -12,14 +13,28 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function send<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T | null> {
-  const res = await fetch(`${API_URL}/api${path}`, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`API ${method} ${path} -> ${res.status}`);
-  return res.status === 204 ? null : res.json();
+const ENTITY_LABELS: Record<string, string> = {
+  products: 'Producto', clients: 'Cliente', rentals: 'Alquiler', sales: 'Venta',
+  deliveries: 'Nota de entrega', 'tech-services': 'Servicio técnico', warranties: 'Garantía',
+  purchases: 'Compra', contact: 'Mensaje',
+};
+const ACTION_LABELS = { POST: 'registrado', PUT: 'actualizado', DELETE: 'eliminado' } as const;
+
+async function send<T = any>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T | null> {
+  const entity = ENTITY_LABELS[path.split('/')[1]] ?? 'Registro';
+  try {
+    const res = await fetch(`${API_URL}/api${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API ${method} ${path} -> ${res.status}`);
+    toast.success(`${entity} ${ACTION_LABELS[method]} correctamente`);
+    return res.status === 204 ? null : res.json();
+  } catch (err) {
+    toast.error(`No se pudo completar la operación (${entity.toLowerCase()})`);
+    throw err;
+  }
 }
 
 const toStr = (v: unknown) => String(v);
@@ -86,7 +101,7 @@ export const mapDelivery = (d: any) => ({
   clientName: d.client_name,
   date: toDate(d.date),
   items: d.items || [],
-  shippingType: d.shipping_type === 'national' ? 'national' : 'local',
+  shippingType: (d.shipping_type === 'national' ? 'national' : 'local') as 'national' | 'local',
   address: d.address || '',
   state: d.state || '',
   agency: d.agency || '',
