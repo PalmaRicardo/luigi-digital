@@ -392,6 +392,14 @@ const priceOf = (p: Product) => {
   return offer ?? p.salePrice ?? p.rentalPrice;
 };
 
+const WHATSAPP_NUMBER = '584124010740';
+
+const waConsultLink = (p: Product) => {
+  const productUrl = `${window.location.origin}/?producto=${p.id}`;
+  const text = `Hola, me interesa el producto "${p.name}". ¿Podrían darme más información?\n${productUrl}`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+};
+
 function ProductCard({ product }: { product: Product }) {
   const hasOffer = product.offerPrice !== undefined && product.salePrice !== undefined && product.offerPrice > 0 && product.offerPrice < product.salePrice;
   const discount = hasOffer ? Math.round((1 - product.offerPrice! / product.salePrice!) * 100) : 0;
@@ -420,8 +428,8 @@ function ProductCard({ product }: { product: Product }) {
           </div>
         )}
         <div className="shop-card-cta">
-          <a href={`https://wa.me/?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`} target="_blank" rel="noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur text-slate-900 dark:text-white text-xs font-700 hover:bg-white">
+          <a href={waConsultLink(product)} target="_blank" rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur text-slate-900 dark:text-white text-xs font-700 hover:bg-white dark:hover:bg-slate-700 dark:hover:text-white transition-colors">
             <MessageSquare size={14} /> Consultar
           </a>
         </div>
