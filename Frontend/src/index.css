@@ -371,6 +371,47 @@ html:not(.dark) .hero-banner .bg-white { background-color: #ffffff !important; }
 }
 .shop-card:hover .shop-card-cta { opacity: 1; transform: translateY(0); }
 @media (hover: none) { .shop-card-cta { opacity: 1; transform: none; } }
+.card-cta-btn {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  transition: all .2s ease;
+}
+.card-cta-btn:hover {
+  background: #7c3aed;
+  color: #ffffff;
+  border-color: #7c3aed;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.4);
+}
+.dark .card-cta-btn {
+  background: rgba(15, 23, 42, 0.90);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.dark .card-cta-btn:hover {
+  background: #8b5cf6;
+  color: #ffffff;
+  border-color: #a78bfa;
+  box-shadow: 0 8px 22px rgba(139, 92, 246, 0.45);
+}
+.card-pill {
+  background: rgba(255, 255, 255, 0.90);
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.dark .card-pill {
+  background: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
 .shop-pill {
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
   font-size: 10px; font-weight: 700; letter-spacing: .04em;
@@ -381,6 +422,7 @@ html:not(.dark) .hero-banner .bg-white { background-color: #ffffff !important; }
   text-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 .liquid-glass {
+  position: relative; border-radius: 20px;
   position: relative; border-radius: 20px;
   background: linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,.06));
   border: 1px solid rgba(255,255,255,.28);

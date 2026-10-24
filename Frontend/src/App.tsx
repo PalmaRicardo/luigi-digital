@@ -419,17 +419,22 @@ function ProductCard({ product }: { product: Product }) {
         <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start">
           {discount > 0 && <span className="shop-pill bg-rose-600 text-white">-{discount}%</span>}
           {product.featured && !discount && <span className="shop-pill bg-amber-400 text-amber-950"><Star size={10} fill="currentColor" /> Top</span>}
-          {product.category === 'card' && <span className="shop-pill glass-pill">Digital</span>}
+          {product.category === 'card' && <span className="shop-pill card-pill">Digital</span>}
         </div>
-        <span className="absolute top-3 right-3 shop-pill glass-pill">{product.brand}</span>
+        <span className="absolute top-3 right-3 shop-pill card-pill">{product.brand}</span>
         {outOfStock && (
           <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px] flex items-center justify-center">
             <span className="shop-pill bg-white text-slate-900 text-xs">Agotado</span>
           </div>
         )}
         <div className="shop-card-cta">
+<<<<<<< HEAD
           <a href={waConsultLink(product)} target="_blank" rel="noreferrer"
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur text-slate-900 dark:text-white text-xs font-700 hover:bg-white dark:hover:bg-slate-700 dark:hover:text-white transition-colors">
+=======
+          <a href={`https://wa.me/?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`} target="_blank" rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl card-cta-btn backdrop-blur text-xs font-700">
+>>>>>>> 827bb78 (cambios 23/10)
             <MessageSquare size={14} /> Consultar
           </a>
         </div>
@@ -455,7 +460,7 @@ function ProductCard({ product }: { product: Product }) {
           ) : null}
           {product.rentalPrice ? (
             <div className="text-xs text-muted mt-0.5 flex items-center gap-1">
-              <Clock size={11} /> Alquiler <strong className="text-gtext">{fmtMoney(product.rentalPrice)}</strong>/día
+              <Clock size={11} /> Alquiler <strong className="text-gtext">{fmtMoney(product.rentalPrice)}</strong>/mes
             </div>
           ) : null}
           <div className="mt-3 flex items-center gap-1.5 text-[11px] font-600">
@@ -598,7 +603,7 @@ function CatalogView() {
       <section className="relative overflow-hidden">
         <img src="https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=1800&h=900&fit=crop&auto=format" alt="Consola de videojuegos" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-slate-950/20" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-20">
+        <div className="relative w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-14 md:py-20">
           <div className="max-w-2xl">
             <span className="glass-pill shop-pill mb-5">Colección 2026 · Envíos a toda Venezuela</span>
             <h1 className="font-display font-700 text-4xl md:text-6xl text-white leading-[1.05] tracking-[-0.03em]">
@@ -626,7 +631,7 @@ function CatalogView() {
 
       {/* Category strip */}
       <div className="border-b border-[var(--c-border)] bg-[var(--c-card)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex gap-2 overflow-x-auto py-3 no-scrollbar">
+        <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 overflow-x-auto py-3 no-scrollbar">
           {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
             <button key={cat} onClick={() => setCategory(cat)}
               className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-600 border transition-all ${category === cat ? 'bg-[#6153d6] border-[#6153d6] text-white' : 'border-[var(--c-border)] text-gtext hover:border-[#6153d6]'}`}>
@@ -637,9 +642,9 @@ function CatalogView() {
       </div>
 
       {/* Shop */}
-      <div id="tienda" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex gap-8 scroll-mt-20">
-        <aside className="hidden lg:block w-64 flex-shrink-0 !bg-transparent">
-          <div className="sticky top-24 rounded-2xl bg-[var(--c-card)] border border-[var(--c-border)] p-5 shadow-[var(--c-shadow)]">
+      <div id="tienda" className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-start gap-6 xl:gap-8 scroll-mt-20">
+        <aside className="hidden lg:block lg:w-72 xl:w-80 2xl:w-[340px] flex-shrink-0 !bg-transparent sticky top-20">
+          <div className="max-h-[calc(100vh-6rem)] overflow-y-auto no-scrollbar rounded-2xl bg-[var(--c-card)] border border-[var(--c-border)] p-5 xl:p-6 shadow-[var(--c-shadow)]">
             <div className="flex items-center gap-2 font-display font-700 text-gtext pb-4"><SlidersHorizontal size={16} /> Filtros</div>
             {filterPanel}
           </div>
@@ -673,7 +678,7 @@ function CatalogView() {
               {hasActiveFilters && <button onClick={clearFilters} className="mt-4 text-sm font-600 text-[#6153d6] hover:underline">Limpiar filtros</button>}
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-5">
               {filtered.map(p => <ProductCard key={p.id} product={p} />)}
             </div>
           )}
@@ -1007,7 +1012,7 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
   const rentableProducts = inventory.filter(p => p.rentalPrice && (p.stock > 0 || p.id === form.productId) && p.type !== 'sale' && p.active !== false);
   const selectedProduct = inventory.find(p => p.id === form.productId);
   const dueDate = new Date(`${form.startDate}T12:00:00`);
-  dueDate.setDate(dueDate.getDate() + Number(form.days || 0));
+  dueDate.setMonth(dueDate.getMonth() + Number(form.days || 0));
   const total = (selectedProduct?.rentalPrice ?? 0) * Number(form.days || 0);
   const filtered = rentals.filter(r => {
     if (statusF !== 'all' && r.status !== statusF) return false;
@@ -1101,7 +1106,7 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>
-                {['ID', 'Cliente', 'Producto', 'Inicio', 'Vence', 'Días', 'Tarifa/día', 'Total', 'Depósito', 'Estado', 'Acciones'].map(h => (
+                {['ID', 'Cliente', 'Producto', 'Inicio', 'Vence', 'Meses', 'Tarifa/mes', 'Total', 'Depósito', 'Estado', 'Acciones'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1147,10 +1152,10 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
             <form onSubmit={saveRental} className="p-7">
               <div className="grid sm:grid-cols-2 gap-5">
                 <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente registrado</option>{clients.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto del inventario</span><select required value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar producto disponible</option>{rentableProducts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/día</option>)}</select></label>
+                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto del inventario</span><select required value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar producto disponible</option>{rentableProducts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/mes</option>)}</select></label>
                 {selectedProduct && <div className="sm:col-span-2 grid grid-cols-3 gap-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-4"><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Tipo</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.category === 'console' ? 'Consola' : selectedProduct.category === 'game' ? 'Juego' : 'Accesorio'}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Especificación</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.description.split('·')[0]}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Disponibles</span><strong className="text-sm text-emerald-600 dark:text-emerald-400">{selectedProduct.stock} unidades</strong></div></div>}
                 <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de inicio</span><DatePicker value={form.startDate} onChange={val=>setForm({...form,startDate:val})} /></label>
-                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración en días</span><input type="number" min="1" required value={form.days} onChange={e=>setForm({...form,days:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración en meses</span><input type="number" min="1" required value={form.days} onChange={e=>setForm({...form,days:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
                 <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Depósito de garantía</span><input type="number" min="0" value={form.deposit} onChange={e=>setForm({...form,deposit:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
                 <div className="rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/80 border border-indigo-100 dark:border-indigo-900 text-slate-900 dark:text-white p-4"><span className="block text-xs text-slate-600 dark:text-white/70">Total estimado · vence {dueDate.toLocaleDateString('es-VE')}</span><strong className="font-display text-2xl text-indigo-600 dark:text-white">{fmtMoney(total)}</strong></div>
                 {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
@@ -1878,7 +1883,7 @@ function PurchasesSection({ inventory, setInventory }: { inventory: Product[]; s
         <div className="stat-card bg-card rounded-xl p-4"><div className="text-xs text-muted">Stock crítico</div><div className="font-display font-700 text-2xl text-warning mt-1">{inventory.filter(p=>p.stock<=2).length}</div></div>
       </div>
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por producto o marca..." /></div>
-      <div className="bg-card rounded-xl overflow-hidden border border-slate-200"><div className="table-scroll"><table className="w-full text-sm"><thead><tr>{['Producto','Tipo','Marca','Capacidad / Especificación','Stock','Venta','Oferta','Alquiler / día','Modalidad','Estado','Acciones'].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{filtered.map(p=><tr key={p.id} className="table-row-hover border-b border-slate-100 last:border-0"><td className="px-4 py-3 font-600 text-gtext whitespace-nowrap">{p.name}</td><td className="px-4 py-3 text-muted capitalize">{p.category === 'console' ? 'Consola' : p.category === 'game' ? 'Juego' : p.category === 'accessory' ? 'Accesorio' : 'Digital'}</td><td className="px-4 py-3"><Badge cls={p.brand.toLowerCase()}>{p.brand}</Badge></td><td className="px-4 py-3 text-muted max-w-[260px] truncate">{p.description}</td><td className="px-4 py-3"><span className={`font-700 ${p.stock<=2?'text-danger':'text-success'}`}>{p.stock}</span></td><td className="px-4 py-3 text-muted">{p.salePrice?fmtMoney(p.salePrice):'—'}</td><td className="px-4 py-3 text-amber-600 dark:text-amber-400 font-600">{p.offerPrice?fmtMoney(p.offerPrice):'—'}</td><td className="px-4 py-3 text-blue font-600">{p.rentalPrice?fmtMoney(p.rentalPrice):'—'}</td><td className="px-4 py-3"><Badge cls={p.type}>{p.type==='both'?'Venta / Alquiler':p.type==='sale'?'Venta':'Alquiler'}</Badge></td><td className="px-4 py-3"><button onClick={()=>toggleActive(p)} title={p.active===false?'Activar producto':'Desactivar producto'} className={`relative w-9 h-5 rounded-full transition-colors ${p.active!==false?'bg-emerald-500':'bg-slate-300 dark:bg-slate-600'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${p.active!==false?'left-4':'left-0.5'}`} /></button></td><td className="px-4 py-3"><div className="flex items-center gap-1.5"><button onClick={()=>openEdit(p)} title="Editar" className="p-1.5 rounded-lg text-blue hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"><Edit3 size={15}/></button><button onClick={()=>deleteProduct(p)} title="Eliminar" className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"><Trash2 size={15}/></button></div></td></tr>)}</tbody></table></div></div>
+      <div className="bg-card rounded-xl overflow-hidden border border-slate-200"><div className="table-scroll"><table className="w-full text-sm"><thead><tr>{['Producto','Tipo','Marca','Capacidad / Especificación','Stock','Venta','Oferta','Alquiler / mes','Modalidad','Estado','Acciones'].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead><tbody>{filtered.map(p=><tr key={p.id} className="table-row-hover border-b border-slate-100 last:border-0"><td className="px-4 py-3 font-600 text-gtext whitespace-nowrap">{p.name}</td><td className="px-4 py-3 text-muted capitalize">{p.category === 'console' ? 'Consola' : p.category === 'game' ? 'Juego' : p.category === 'accessory' ? 'Accesorio' : 'Digital'}</td><td className="px-4 py-3"><Badge cls={p.brand.toLowerCase()}>{p.brand}</Badge></td><td className="px-4 py-3 text-muted max-w-[260px] truncate">{p.description}</td><td className="px-4 py-3"><span className={`font-700 ${p.stock<=2?'text-danger':'text-success'}`}>{p.stock}</span></td><td className="px-4 py-3 text-muted">{p.salePrice?fmtMoney(p.salePrice):'—'}</td><td className="px-4 py-3 text-amber-600 dark:text-amber-400 font-600">{p.offerPrice?fmtMoney(p.offerPrice):'—'}</td><td className="px-4 py-3 text-blue font-600">{p.rentalPrice?fmtMoney(p.rentalPrice):'—'}</td><td className="px-4 py-3"><Badge cls={p.type}>{p.type==='both'?'Venta / Alquiler':p.type==='sale'?'Venta':'Alquiler'}</Badge></td><td className="px-4 py-3"><button onClick={()=>toggleActive(p)} title={p.active===false?'Activar producto':'Desactivar producto'} className={`relative w-9 h-5 rounded-full transition-colors ${p.active!==false?'bg-emerald-500':'bg-slate-300 dark:bg-slate-600'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${p.active!==false?'left-4':'left-0.5'}`} /></button></td><td className="px-4 py-3"><div className="flex items-center gap-1.5"><button onClick={()=>openEdit(p)} title="Editar" className="p-1.5 rounded-lg text-blue hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"><Edit3 size={15}/></button><button onClick={()=>deleteProduct(p)} title="Eliminar" className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"><Trash2 size={15}/></button></div></td></tr>)}</tbody></table></div></div>
 
       {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4"><button className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Control de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">{editingId ? 'Editar producto' : 'Registrar producto'}</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Configura sus características comerciales y disponibilidad.</p></div><button onClick={()=>setModalOpen(false)} className="p-2 h-fit rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div><form onSubmit={saveProduct} className="p-7 grid sm:grid-cols-2 gap-5">
         <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nombre comercial</span><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. PlayStation 5 Slim 1TB" /></label>
@@ -1910,7 +1915,7 @@ function PurchasesSection({ inventory, setInventory }: { inventory: Product[]; s
         <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Stock inicial</span><input type="number" min="0" required value={form.stock} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
         <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Modalidad</span><select value={form.type} onChange={e=>setForm({...form,type:e.target.value as Product['type']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="both">Venta y alquiler</option><option value="sale">Solo venta</option><option value="rental">Solo alquiler</option></select></label>
         <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Precio de venta</span><input type="number" min="0" value={form.salePrice} onChange={e=>setForm({...form,salePrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tarifa de alquiler / día</span><input type="number" min="0" value={form.rentalPrice} onChange={e=>setForm({...form,rentalPrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
+        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tarifa de alquiler / mes</span><input type="number" min="0" value={form.rentalPrice} onChange={e=>setForm({...form,rentalPrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
         <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Precio de oferta (opcional · 0 = sin oferta)</span><input type="number" min="0" step="0.01" value={form.offerPrice} onChange={e=>setForm({...form,offerPrice:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-slate-900 dark:text-white" placeholder="Ej. 649.99" /></label>
         {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
         <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">{editingId ? 'Guardar cambios' : 'Guardar producto'}</button></div>
