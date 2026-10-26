@@ -428,13 +428,8 @@ function ProductCard({ product }: { product: Product }) {
           </div>
         )}
         <div className="shop-card-cta">
-<<<<<<< HEAD
           <a href={waConsultLink(product)} target="_blank" rel="noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/90 dark:bg-slate-900/80 backdrop-blur text-slate-900 dark:text-white text-xs font-700 hover:bg-white dark:hover:bg-slate-700 dark:hover:text-white transition-colors">
-=======
-          <a href={`https://wa.me/?text=${encodeURIComponent(`Hola, me interesa: ${product.name}`)}`} target="_blank" rel="noreferrer"
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl card-cta-btn backdrop-blur text-xs font-700">
->>>>>>> 827bb78 (cambios 23/10)
             <MessageSquare size={14} /> Consultar
           </a>
         </div>
