@@ -1926,7 +1926,7 @@ function ContactLocationSection() {
   const [info, setInfo] = useState({
     address: 'Av. Principal, Urb. Las Palmas, Quinta 5, Caracas 1050, Venezuela',
     phone: '+58 (412) 555-1234',
-    whatsapp: '+58 (414) 999-0011',
+    whatsapp: '+58 (412) 401-0740',
     email: 'contacto@luigidigital.com',
     hours: 'Lunes a Sábado: 9:00 AM - 7:00 PM',
   });
