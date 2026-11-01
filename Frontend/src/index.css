@@ -423,7 +423,6 @@ html:not(.dark) .hero-banner .bg-white { background-color: #ffffff !important; }
 }
 .liquid-glass {
   position: relative; border-radius: 20px;
-  position: relative; border-radius: 20px;
   background: linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,.06));
   border: 1px solid rgba(255,255,255,.28);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 10px 30px rgba(0,0,0,.25);

@@ -82,6 +82,9 @@ export const mapRental = (r: any) => ({
   amount: toNum(r.amount),
   deposit: toNum(r.deposit),
   status: r.status,
+  rentalType: (r.rental_type || 'product') as 'product' | 'service',
+  renewalsCount: toNum(r.renewals_count || 0),
+  lastRenewedAt: r.last_renewed_at ? toDate(r.last_renewed_at) : undefined,
 });
 
 export const mapSale = (s: any) => ({
@@ -122,6 +125,9 @@ export const mapTechService = (t: any) => ({
   cost: toNum(t.cost),
   status: t.status,
   notes: t.notes || '',
+  paymentModality: (t.payment_modality || 'cash') as 'cash' | 'installments' | 'rental',
+  financingPlanId: t.financing_plan_id ? toStr(t.financing_plan_id) : undefined,
+  rentalId: t.rental_id ? toStr(t.rental_id) : undefined,
 });
 
 export const mapWarranty = (w: any) => ({
@@ -177,6 +183,7 @@ export const api = {
     list: async () => (await get<any[]>('/rentals')).map(mapRental),
     create: (r: any) => send('POST', '/rentals', r),
     update: (id: string, r: any) => send('PUT', `/rentals/${id}`, r),
+    renew: (id: string, body?: { additional_months?: number }) => send('POST', `/rentals/${id}/renew`, body),
     remove: (id: string) => send('DELETE', `/rentals/${id}`),
   },
   sales: {

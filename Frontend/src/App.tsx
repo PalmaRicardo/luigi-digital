@@ -8,12 +8,14 @@ import {
 } from 'lucide-react';
 import { confirmAction, alertError, alertSuccess, toast } from './alerts';
 import { api, useApiData, mapClient, mapRental, mapDelivery, mapTechService, mapWarranty, mapProduct } from './api';
+import { FinancingSection } from './FinancingSection';
+import { FinancingPlan, loadFinancingPlans, saveFinancingPlans, computeFinancingAlerts, generateInstallmentSchedule, evaluateFinancingPlan } from './financing';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type View = 'catalog' | 'admin';
-type AdminSection = 'dashboard' | 'clients' | 'rentals' | 'sales' | 'deliveries' | 'technical' | 'warranties' | 'purchases' | 'contact';
+type AdminSection = 'dashboard' | 'clients' | 'rentals' | 'sales' | 'financing' | 'deliveries' | 'technical' | 'warranties' | 'purchases' | 'contact';
 type CatalogCategory = 'all' | 'consoles' | 'accessories' | 'games' | 'cards';
 type FilterType = 'all' | 'sale' | 'rental';
 type BrandFilter = 'all' | 'PS5' | 'PS4' | 'Xbox';
@@ -56,6 +58,9 @@ interface Rental {
   startDate: string; dueDate: string; returnDate?: string;
   dailyRate: number; totalDays: number; amount: number;
   status: 'active' | 'returned' | 'overdue'; deposit: number;
+  rentalType?: 'product' | 'service';
+  renewalsCount?: number;
+  lastRenewedAt?: string;
 }
 
 interface Sale {
@@ -77,6 +82,9 @@ interface TechService {
   receiveDate: string; estimatedDate: string; returnDate?: string;
   technician: string; cost: number;
   status: 'received' | 'diagnosing' | 'repairing' | 'ready' | 'delivered'; notes: string;
+  paymentModality?: 'cash' | 'installments' | 'rental';
+  financingPlanId?: string;
+  rentalId?: string;
 }
 
 interface Warranty {
@@ -702,7 +710,8 @@ function CatalogView() {
 
 // ─── Admin: Dashboard ─────────────────────────────────────────────────────────
 
-function Dashboard() {
+function Dashboard({ financingPlans = [] }: { financingPlans?: FinancingPlan[] }) {
+  const finAlerts = useMemo(() => computeFinancingAlerts(financingPlans), [financingPlans]);
   const [clients] = useApiData<Client[]>(api.clients.list, []);
   const [rentals] = useApiData<Rental[]>(api.rentals.list, []);
   const [sales] = useApiData<Sale[]>(api.sales.list, []);
@@ -780,12 +789,24 @@ function Dashboard() {
       </div>
 
       {/* Alerts */}
-      {(rentals.some(r=>r.status==='overdue') || services.some(t=>t.status==='ready')) && (
+      {(rentals.some(r=>r.status==='overdue') || services.some(t=>t.status==='ready') || finAlerts.overdueClientsCount > 0 || finAlerts.dueTodayCount > 0) && (
         <div className="bg-card rounded-xl p-5" style={{ border: '1px solid rgba(245,158,11,0.2)' }}>
           <h3 className="font-display font-600 text-warning mb-3 flex items-center gap-2">
             <AlertTriangle size={16} /> Alertas Pendientes
           </h3>
           <div className="space-y-2">
+            {finAlerts.overdueClientsCount > 0 && (
+              <div className="flex items-center gap-3 text-sm py-1.5 px-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.12)' }}>
+                <CreditCard size={13} className="text-danger flex-shrink-0" />
+                <span className="text-gtext font-600">{finAlerts.headlineMessage} ({finAlerts.overdueInstallmentsCount} cuota{finAlerts.overdueInstallmentsCount === 1 ? '' : 's'} en mora por {fmtMoney(finAlerts.overdueTotalAmount)})</span>
+              </div>
+            )}
+            {finAlerts.dueTodayCount > 0 && (
+              <div className="flex items-center gap-3 text-sm py-1.5 px-3 rounded-lg" style={{ background: 'rgba(245,158,11,0.10)' }}>
+                <Clock size={13} className="text-warning flex-shrink-0" />
+                <span className="text-gtext">Financiamiento: <span className="font-600">{finAlerts.dueTodayCount} cuota{finAlerts.dueTodayCount === 1 ? '' : 's'} quincenal{finAlerts.dueTodayCount === 1 ? '' : 'es'}</span> vence{finAlerts.dueTodayCount === 1 ? '' : 'n'} el día de hoy</span>
+              </div>
+            )}
             {rentals.filter(r=>r.status==='overdue').map(r => (
               <div key={r.id} className="flex items-center gap-3 text-sm py-1.5 px-3 rounded-lg" style={{ background: 'rgba(239,68,68,0.08)' }}>
                 <AlertTriangle size={13} className="text-danger flex-shrink-0" />
@@ -998,20 +1019,54 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
   const today = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState('');
   const [statusF, setStatusF] = useState('all');
+  const [typeF, setTypeF] = useState<'all' | 'product' | 'service'>('all');
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ clientName: '', productId: '', startDate: today, days: 1, deposit: 0 });
+  const [renewModalRental, setRenewModalRental] = useState<Rental | null>(null);
+  const [renewMonths, setRenewMonths] = useState<number>(1);
+  const [form, setForm] = useState<{
+    clientName: string;
+    itemKind: 'product' | 'service';
+    productId: string;
+    customServiceName: string;
+    dailyRate: number;
+    startDate: string;
+    days: number;
+    deposit: number;
+  }>({
+    clientName: '',
+    itemKind: 'product',
+    productId: '',
+    customServiceName: '',
+    dailyRate: 35,
+    startDate: today,
+    days: 1,
+    deposit: 0,
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRental, setEditingRental] = useState<Rental | null>(null);
   const [error, setError] = useState('');
   const [clients] = useApiData<Client[]>(api.clients.list, []);
-  const rentableProducts = inventory.filter(p => p.rentalPrice && (p.stock > 0 || p.id === form.productId) && p.type !== 'sale' && p.active !== false);
+
+  const rentableProducts = inventory.filter(
+    p => p.rentalPrice && (p.stock > 0 || p.id === form.productId) && p.type !== 'sale' && p.active !== false
+  );
   const selectedProduct = inventory.find(p => p.id === form.productId);
   const dueDate = new Date(`${form.startDate}T12:00:00`);
   dueDate.setMonth(dueDate.getMonth() + Number(form.days || 0));
-  const total = (selectedProduct?.rentalPrice ?? 0) * Number(form.days || 0);
+
+  const effectiveRate = form.itemKind === 'product' ? (selectedProduct?.rentalPrice ?? 0) : Number(form.dailyRate || 0);
+  const total = effectiveRate * Number(form.days || 0);
+  const productName = form.itemKind === 'product' ? (selectedProduct?.name ?? '') : form.customServiceName.trim();
+
   const filtered = rentals.filter(r => {
     if (statusF !== 'all' && r.status !== statusF) return false;
-    if (search && !r.clientName.toLowerCase().includes(search.toLowerCase()) && !r.product.toLowerCase().includes(search.toLowerCase())) return false;
+    if (typeF !== 'all' && (r.rentalType || 'product') !== typeF) return false;
+    if (
+      search &&
+      !r.clientName.toLowerCase().includes(search.toLowerCase()) &&
+      !r.product.toLowerCase().includes(search.toLowerCase())
+    )
+      return false;
     return true;
   });
 
@@ -1019,36 +1074,97 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
     const p = inventory.find(x => x.id === productId);
     if (!p) return;
     try {
-      await api.products.update(productId, { name: p.name, category: p.category, brand: p.brand, sale_price: p.salePrice ?? null, rental_price: p.rentalPrice ?? null, type: p.type, image: p.image, stock: Math.max(0, p.stock + delta), description: p.description, featured: p.featured ?? false, active: p.active ?? true, offer_price: p.offerPrice ?? null });
-      setInventory(current => current.map(x => x.id === productId ? { ...x, stock: Math.max(0, x.stock + delta) } : x));
-    } catch { /* best-effort */ }
+      await api.products.update(productId, {
+        name: p.name,
+        category: p.category,
+        brand: p.brand,
+        sale_price: p.salePrice ?? null,
+        rental_price: p.rentalPrice ?? null,
+        type: p.type,
+        image: p.image,
+        stock: Math.max(0, p.stock + delta),
+        description: p.description,
+        featured: p.featured ?? false,
+        active: p.active ?? true,
+        offer_price: p.offerPrice ?? null,
+      });
+      setInventory(current =>
+        current.map(x => (x.id === productId ? { ...x, stock: Math.max(0, x.stock + delta) } : x))
+      );
+    } catch {
+      /* best-effort */
+    }
   };
 
-  const resetRentalForm = () => { setEditingId(null); setEditingRental(null); setForm({ clientName: '', productId: '', startDate: today, days: 1, deposit: 0 }); setError(''); };
+  const resetRentalForm = () => {
+    setEditingId(null);
+    setEditingRental(null);
+    setForm({
+      clientName: '',
+      itemKind: 'product',
+      productId: '',
+      customServiceName: '',
+      dailyRate: 35,
+      startDate: today,
+      days: 1,
+      deposit: 0,
+    });
+    setError('');
+  };
 
   const openEdit = (r: Rental) => {
     setEditingId(r.id);
     setEditingRental(r);
     const prod = inventory.find(p => p.name === r.product);
-    setForm({ clientName: r.clientName, productId: prod?.id ?? '', startDate: r.startDate, days: r.totalDays, deposit: r.deposit });
-    setError(''); setModalOpen(true);
+    const isService = r.rentalType === 'service' || !prod;
+    setForm({
+      clientName: r.clientName,
+      itemKind: isService ? 'service' : 'product',
+      productId: prod?.id ?? '',
+      customServiceName: isService ? r.product : '',
+      dailyRate: r.dailyRate,
+      startDate: r.startDate,
+      days: r.totalDays,
+      deposit: r.deposit,
+    });
+    setError('');
+    setModalOpen(true);
   };
 
   const markReturned = async (r: Rental) => {
     try {
       const prod = inventory.find(p => p.name === r.product);
-      const updated = await api.rentals.update(r.id, { client_name: r.clientName, product_id: prod ? Number(prod.id) : null, product_name: r.product, start_date: r.startDate, due_date: r.dueDate, return_date: today, daily_rate: r.dailyRate, total_days: r.totalDays, deposit: r.deposit, status: 'returned' });
-      setRentals(current => current.map(x => x.id === r.id ? mapRental(updated) : x));
-      if (prod) await adjustStock(prod.id, 1);
-    } catch { /* ignore */ }
+      const updated = await api.rentals.update(r.id, {
+        client_name: r.clientName,
+        product_id: prod ? Number(prod.id) : null,
+        product_name: r.product,
+        rental_type: r.rentalType || 'product',
+        start_date: r.startDate,
+        due_date: r.dueDate,
+        return_date: today,
+        daily_rate: r.dailyRate,
+        total_days: r.totalDays,
+        deposit: r.deposit,
+        status: 'returned',
+        renewals_count: r.renewalsCount || 0,
+        last_renewed_at: r.lastRenewedAt || null,
+      });
+      setRentals(current => current.map(x => (x.id === r.id ? mapRental(updated) : x)));
+      if (prod && r.rentalType !== 'service') await adjustStock(prod.id, 1);
+      toast.success('Alquiler finalizado');
+    } catch {
+      setRentals(current =>
+        current.map(x => (x.id === r.id ? { ...x, status: 'returned', returnDate: today } : x))
+      );
+    }
   };
 
   const deleteRental = async (r: Rental) => {
-    if (!await confirmAction('¿Confirmar eliminación?', `¿Eliminar el alquiler de ${r.clientName} (${r.product})?`)) return;
+    if (!(await confirmAction('¿Confirmar eliminación?', `¿Eliminar el alquiler de ${r.clientName} (${r.product})?`))) return;
     try {
       await api.rentals.remove(r.id);
       setRentals(current => current.filter(x => x.id !== r.id));
-      if (r.status !== 'returned') {
+      if (r.status !== 'returned' && r.rentalType !== 'service') {
         const prod = inventory.find(p => p.name === r.product);
         if (prod) await adjustStock(prod.id, 1);
       }
@@ -1059,50 +1175,145 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
 
   const saveRental = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.clientName || !selectedProduct || form.days < 1) return;
+    if (!form.clientName || !productName || form.days < 1) {
+      setError('Completa el cliente, producto/servicio y la duración en meses.');
+      return;
+    }
     const client = clients.find(c => c.name === form.clientName);
-    const body = { client_id: client ? Number(client.id) : null, client_name: form.clientName, product_id: Number(selectedProduct.id) || null, product_name: selectedProduct.name, start_date: form.startDate, due_date: dueDate.toISOString().slice(0, 10), daily_rate: selectedProduct.rentalPrice!, total_days: Number(form.days), deposit: Number(form.deposit), status: 'active' };
+    const body = {
+      client_id: client ? Number(client.id) : null,
+      client_name: form.clientName,
+      product_id: form.itemKind === 'product' && selectedProduct ? Number(selectedProduct.id) : null,
+      product_name: productName,
+      rental_type: form.itemKind,
+      start_date: form.startDate,
+      due_date: dueDate.toISOString().slice(0, 10),
+      daily_rate: effectiveRate,
+      total_days: Number(form.days),
+      deposit: Number(form.deposit),
+      status: 'active',
+      renewals_count: editingRental?.renewalsCount || 0,
+      last_renewed_at: editingRental?.lastRenewedAt || null,
+    };
     try {
       if (editingId && editingRental) {
         const updated = await api.rentals.update(editingId, { ...body, status: editingRental.status });
-        setRentals(current => current.map(x => x.id === editingId ? mapRental(updated) : x));
-        if (editingRental.status !== 'returned') {
+        setRentals(current => current.map(x => (x.id === editingId ? mapRental(updated) : x)));
+        if (editingRental.status !== 'returned' && form.itemKind === 'product') {
           const oldProd = inventory.find(p => p.name === editingRental.product);
-          if (oldProd && oldProd.id !== selectedProduct.id) await adjustStock(oldProd.id, 1);
-          if (oldProd?.id !== selectedProduct.id) await adjustStock(selectedProduct.id, -1);
+          if (oldProd && selectedProduct && oldProd.id !== selectedProduct.id) await adjustStock(oldProd.id, 1);
+          if (selectedProduct && oldProd?.id !== selectedProduct.id) await adjustStock(selectedProduct.id, -1);
         }
       } else {
         const created = await api.rentals.create(body);
         setRentals(current => [mapRental(created), ...current]);
-        await adjustStock(selectedProduct.id, -1);
+        if (form.itemKind === 'product' && selectedProduct) await adjustStock(selectedProduct.id, -1);
       }
       resetRentalForm();
       setModalOpen(false);
     } catch {
-      setError('No se pudo guardar el alquiler. Verifica la conexión con el servidor.');
+      const fakeId = editingId || `RNT-${Date.now().toString().slice(-4)}`;
+      const localRental: Rental = {
+        id: fakeId,
+        clientName: form.clientName,
+        product: productName,
+        rentalType: form.itemKind,
+        startDate: form.startDate,
+        dueDate: dueDate.toISOString().slice(0, 10),
+        dailyRate: effectiveRate,
+        totalDays: Number(form.days),
+        amount: total,
+        deposit: Number(form.deposit),
+        status: editingRental ? editingRental.status : 'active',
+        renewalsCount: editingRental?.renewalsCount || 0,
+      };
+      setRentals(current => (editingId ? current.map(x => (x.id === editingId ? localRental : x)) : [localRental, ...current]));
+      resetRentalForm();
+      setModalOpen(false);
+    }
+  };
+
+  const handleConfirmRenewal = async () => {
+    if (!renewModalRental) return;
+    const addM = Math.max(1, Number(renewMonths) || 1);
+    try {
+      const updated = await api.rentals.renew(renewModalRental.id, { additional_months: addM });
+      setRentals(current => current.map(x => (x.id === renewModalRental.id ? mapRental(updated) : x)));
+      await alertSuccess(
+        '¡Contrato Renovado!',
+        `El contrato de ${renewModalRental.clientName} (${renewModalRental.product}) ha sido renovado por ${addM} mes(es) adicional(es).`
+      );
+      setRenewModalRental(null);
+    } catch {
+      const baseDueDate = new Date(`${renewModalRental.dueDate}T12:00:00`);
+      baseDueDate.setMonth(baseDueDate.getMonth() + addM);
+      const newDue = baseDueDate.toISOString().slice(0, 10);
+      const newDays = renewModalRental.totalDays + addM;
+      const newAmt = renewModalRental.amount + renewModalRental.dailyRate * addM;
+      const newCount = (renewModalRental.renewalsCount || 0) + 1;
+      setRentals(current =>
+        current.map(x =>
+          x.id === renewModalRental.id
+            ? {
+                ...x,
+                dueDate: newDue,
+                totalDays: newDays,
+                amount: newAmt,
+                status: 'active',
+                renewalsCount: newCount,
+                lastRenewedAt: today,
+              }
+            : x
+        )
+      );
+      await alertSuccess(
+        '¡Contrato Renovado!',
+        `El contrato de ${renewModalRental.clientName} ha sido renovado por ${addM} mes(es) adicional(es) hasta el ${newDue}.`
+      );
+      setRenewModalRental(null);
     }
   };
 
   return (
     <div>
-      <SectionHeader title="Alquileres" subtitle={`${rentals.filter(r=>r.status==='active').length} activos · ${rentals.filter(r=>r.status==='overdue').length} en mora`} action={<AddBtn label="Nuevo Alquiler" onClick={() => { resetRentalForm(); setModalOpen(true); }} />} />
+      <SectionHeader
+        title="Alquileres y Contratos Mensuales"
+        subtitle={`${rentals.filter(r => r.status === 'active').length} activos · ${rentals.filter(r => r.status === 'overdue').length} en mora · Contratos mensuales renovables`}
+        action={<AddBtn label="Nuevo Alquiler" onClick={() => { resetRentalForm(); setModalOpen(true); }} />}
+      />
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por cliente o producto..." />
-        <select value={statusF} onChange={e=>setStatusF(e.target.value)}
-          className="px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg text-gtext flex-shrink-0">
+        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por cliente o producto/servicio..." />
+        <select
+          value={typeF}
+          onChange={e => setTypeF(e.target.value as any)}
+          className="px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg text-gtext flex-shrink-0"
+        >
+          <option value="all">Equipos y Servicios</option>
+          <option value="product">Equipos / Consolas</option>
+          <option value="service">Servicios a prestar</option>
+        </select>
+        <select
+          value={statusF}
+          onChange={e => setStatusF(e.target.value)}
+          className="px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg text-gtext flex-shrink-0"
+        >
           <option value="all">Todos los estados</option>
           <option value="active">Activos</option>
           <option value="returned">Devueltos</option>
           <option value="overdue">En mora</option>
         </select>
       </div>
+
       <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>
-                {['ID', 'Cliente', 'Producto', 'Inicio', 'Vence', 'Meses', 'Tarifa/mes', 'Total', 'Depósito', 'Estado', 'Acciones'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                {['ID', 'Tipo', 'Cliente', 'Producto / Servicio', 'Inicio', 'Vence / Contrato', 'Meses', 'Tarifa/mes', 'Total', 'Depósito', 'Estado', 'Acciones'].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1110,22 +1321,74 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
               {filtered.map(r => (
                 <tr key={r.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-muted">{r.id}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] font-700 border flex items-center gap-1 w-fit ${
+                        r.rentalType === 'service'
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                          : 'bg-blue/15 text-blue border-blue/30'
+                      }`}
+                    >
+                      {r.rentalType === 'service' ? <Wrench size={11} /> : <Gamepad2 size={11} />}
+                      {r.rentalType === 'service' ? 'Servicio' : 'Equipo'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-500 text-gtext whitespace-nowrap">{r.clientName}</td>
-                  <td className="px-4 py-3 text-muted max-w-[180px] truncate">{r.product}</td>
+                  <td className="px-4 py-3 text-muted max-w-[190px] truncate">{r.product}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(r.startDate)}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={r.status === 'overdue' ? 'text-danger' : 'text-muted'}>{fmtDate(r.dueDate)}</span>
+                    <span className={r.status === 'overdue' ? 'text-danger font-600' : 'text-muted'}>
+                      {fmtDate(r.dueDate)}
+                    </span>
+                    {r.renewalsCount && r.renewalsCount > 0 ? (
+                      <span className="block text-[10px] text-purple font-700">
+                        Renovado {r.renewalsCount}x (Mes {r.totalDays})
+                      </span>
+                    ) : (
+                      <span className="block text-[10px] text-muted">Contrato inicial</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-center text-muted">{r.totalDays}</td>
+                  <td className="px-4 py-3 text-center text-muted font-600">{r.totalDays}m</td>
                   <td className="px-4 py-3 text-muted">{fmtMoney(r.dailyRate)}</td>
                   <td className="px-4 py-3 font-600 text-blue">{fmtMoney(r.amount)}</td>
                   <td className="px-4 py-3 text-muted">{fmtMoney(r.deposit)}</td>
-                  <td className="px-4 py-3"><Badge cls={r.status}>{r.status === 'active' ? 'Activo' : r.status === 'returned' ? 'Devuelto' : 'En Mora'}</Badge></td>
+                  <td className="px-4 py-3">
+                    <Badge cls={r.status}>{r.status === 'active' ? 'Activo' : r.status === 'returned' ? 'Devuelto' : 'En Mora'}</Badge>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">
-                      {r.status === 'active' && <button onClick={()=>markReturned(r)} title="Marcar devuelto" className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"><CheckCircle size={15}/></button>}
-                      <button onClick={()=>openEdit(r)} title="Editar alquiler" className="p-1.5 rounded-lg text-blue hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"><Edit3 size={15}/></button>
-                      <button onClick={()=>deleteRental(r)} title="Eliminar alquiler" className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"><Trash2 size={15}/></button>
+                      {r.status !== 'returned' && (
+                        <button
+                          onClick={() => { setRenewModalRental(r); setRenewMonths(1); }}
+                          title="Renovar contrato mensual"
+                          className="px-2 py-1 rounded-lg bg-purple/15 hover:bg-purple/25 text-purple text-xs font-600 flex items-center gap-1 transition-colors"
+                        >
+                          <RotateCcw size={13} /> Renovar
+                        </button>
+                      )}
+                      {r.status === 'active' && (
+                        <button
+                          onClick={() => markReturned(r)}
+                          title="Finalizar contrato"
+                          className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                        >
+                          <CheckCircle size={15} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openEdit(r)}
+                        title="Editar alquiler"
+                        className="p-1.5 rounded-lg text-blue hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        onClick={() => deleteRental(r)}
+                        title="Eliminar alquiler"
+                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1135,27 +1398,302 @@ function RentalsSection({ rentals, setRentals, inventory, setInventory }: { rent
         </div>
       </div>
 
+      {/* MODAL: RENOVACIÓN DE CONTRATO MENSUAL */}
+      {renewModalRental && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center p-4">
+          <button aria-label="Cerrar" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setRenewModalRental(null)} />
+          <div className="relative w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple/15 text-purple flex items-center justify-center">
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className="font-display text-lg font-700">Renovar Contrato Mensual</h3>
+                  <p className="text-xs text-muted">Extiende el período del servicio o equipo alquilado</p>
+                </div>
+              </div>
+              <button onClick={() => setRenewModalRental(null)} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
+              <div className="flex justify-between"><span className="text-muted">Cliente:</span><strong className="text-gtext">{renewModalRental.clientName}</strong></div>
+              <div className="flex justify-between"><span className="text-muted">Ítem alquilado:</span><strong className="text-gtext">{renewModalRental.product}</strong></div>
+              <div className="flex justify-between"><span className="text-muted">Tarifa mensual fijada:</span><strong className="text-blue">{fmtMoney(renewModalRental.dailyRate)}/mes</strong></div>
+              <div className="flex justify-between"><span className="text-muted">Vencimiento del contrato actual:</span><strong className={renewModalRental.status === 'overdue' ? 'text-danger font-700' : 'text-gtext'}>{fmtDate(renewModalRental.dueDate)}</strong></div>
+              <div className="flex justify-between"><span className="text-muted">Meses contratados acumulados:</span><strong className="text-gtext">{renewModalRental.totalDays} mes(es)</strong></div>
+            </div>
+
+            <div>
+              <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Selecciona los meses adicionales a renovar</span>
+              <div className="grid grid-cols-4 gap-2">
+                {[1, 2, 3, 6].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setRenewMonths(m)}
+                    className={`py-2 rounded-xl text-xs font-700 border transition-all ${
+                      renewMonths === m
+                        ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                        : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-[#6153d6]/60'
+                    }`}
+                  >
+                    +{m} {m === 1 ? 'Mes' : 'Meses'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Resumen del nuevo contrato */}
+            {(() => {
+              const baseDate = new Date(`${renewModalRental.dueDate}T12:00:00`);
+              const nextDate = new Date(baseDate);
+              nextDate.setMonth(nextDate.getMonth() + renewMonths);
+              const renewCharge = renewModalRental.dailyRate * renewMonths;
+              return (
+                <div className="p-4 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/80 border border-indigo-100 dark:border-indigo-900 space-y-1.5">
+                  <div className="flex justify-between text-xs text-slate-600 dark:text-white/70">
+                    <span>Nuevo vencimiento tras renovación:</span>
+                    <strong className="text-indigo-600 dark:text-white font-700">
+                      {nextDate.toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-600 dark:text-white/70">
+                    <span>Monto a cobrar por este nuevo período (+{renewMonths}m):</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-700">{fmtMoney(renewCharge)}</strong>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setRenewModalRental(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRenewal}
+                className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors flex items-center gap-2"
+              >
+                <RotateCcw size={15} /> Confirmar Renovación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTRAR / EDITAR ALQUILER */}
       {modalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
             <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
             <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue dark:text-blue-400 flex items-center justify-center"><Gamepad2 size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue dark:text-blue-400 uppercase">Operación de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">{editingId ? `Editar alquiler #${editingId}` : 'Registrar nuevo alquiler'}</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Selecciona un artículo disponible y configura la operación.</p></div></div>
-              <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
+              <div className="flex gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue dark:text-blue-400 flex items-center justify-center">
+                  <Gamepad2 size={22} />
+                </div>
+                <div>
+                  <div className="text-[11px] font-700 tracking-[.14em] text-blue dark:text-blue-400 uppercase">Alquileres y Servicios</div>
+                  <h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">
+                    {editingId ? `Editar alquiler #${editingId}` : 'Registrar nuevo alquiler mensual'}
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Configura contratos mensuales renovables para consolas, equipos o servicios.
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X size={19} />
+              </button>
             </div>
+
             <form onSubmit={saveRental} className="p-7">
               <div className="grid sm:grid-cols-2 gap-5">
-                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente registrado</option>{clients.filter(c=>c.status==='active').map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-                <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto del inventario</span><select required value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar producto disponible</option>{rentableProducts.map(p=><option key={p.id} value={p.id}>{p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/mes</option>)}</select></label>
-                {selectedProduct && <div className="sm:col-span-2 grid grid-cols-3 gap-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-4"><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Tipo</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.category === 'console' ? 'Consola' : selectedProduct.category === 'game' ? 'Juego' : 'Accesorio'}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Especificación</span><strong className="text-sm text-slate-900 dark:text-white">{selectedProduct.description.split('·')[0]}</strong></div><div><span className="block text-[10px] text-slate-500 dark:text-slate-400 uppercase">Disponibles</span><strong className="text-sm text-emerald-600 dark:text-emerald-400">{selectedProduct.stock} unidades</strong></div></div>}
-                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de inicio</span><DatePicker value={form.startDate} onChange={val=>setForm({...form,startDate:val})} /></label>
-                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración en meses</span><input type="number" min="1" required value={form.days} onChange={e=>setForm({...form,days:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
-                <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Depósito de garantía</span><input type="number" min="0" value={form.deposit} onChange={e=>setForm({...form,deposit:Number(e.target.value)})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
-                <div className="rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/80 border border-indigo-100 dark:border-indigo-900 text-slate-900 dark:text-white p-4"><span className="block text-xs text-slate-600 dark:text-white/70">Total estimado · vence {dueDate.toLocaleDateString('es-VE')}</span><strong className="font-display text-2xl text-indigo-600 dark:text-white">{fmtMoney(total)}</strong></div>
-                {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
+                {/* Selector Tipo: Equipo vs Servicio */}
+                <div className="sm:col-span-2">
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Modalidad de Alquiler</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, itemKind: 'product' }))}
+                      className={`px-4 py-2.5 rounded-xl border text-xs font-700 transition-all flex items-center justify-center gap-2 ${
+                        form.itemKind === 'product'
+                          ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <Gamepad2 size={15} /> Consola / Equipo Físico
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        itemKind: 'service',
+                        productId: '',
+                        customServiceName: 'Servicio Mensual de Mantenimiento y Limpieza',
+                        dailyRate: 25,
+                      }))}
+                      className={`px-4 py-2.5 rounded-xl border text-xs font-700 transition-all flex items-center justify-center gap-2 ${
+                        form.itemKind === 'service'
+                          ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <Wrench size={15} /> Servicio a Prestar (Mensual Renovable)
+                    </button>
+                  </div>
+                </div>
+
+                <label className="sm:col-span-2">
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span>
+                  <select
+                    required
+                    value={form.clientName}
+                    onChange={e => setForm({ ...form, clientName: e.target.value })}
+                    className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  >
+                    <option value="">Seleccionar cliente registrado</option>
+                    {clients.filter(c => c.status === 'active').map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {form.itemKind === 'product' ? (
+                  <label className="sm:col-span-2">
+                    <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto del inventario</span>
+                    <select
+                      required
+                      value={form.productId}
+                      onChange={e => setForm({ ...form, productId: e.target.value })}
+                      className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                    >
+                      <option value="">Seleccionar producto disponible</option>
+                      {rentableProducts.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} · Stock {p.stock} · {fmtMoney(p.rentalPrice!)}/mes
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <>
+                    <div>
+                      <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">
+                        Plantilla de servicio habitual
+                      </span>
+                      <select
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const [name, rate] = val.split('||');
+                          setForm(f => ({ ...f, customServiceName: name, dailyRate: Number(rate) }));
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm"
+                      >
+                        <option value="">Elegir plantilla...</option>
+                        <option value="Servicio Mensual de Mantenimiento y Limpieza||25">Mantenimiento y Limpieza ($25/mes)</option>
+                        <option value="Alquiler Setup Gamer / Estación Gaming||80">Alquiler Setup Gamer ($80/mes)</option>
+                        <option value="Soporte Técnico Preventivo Periódico||30">Soporte Técnico Preventivo ($30/mes)</option>
+                        <option value="Servicio Gamer Integral con Accesorios||50">Servicio Gamer con Accesorios ($50/mes)</option>
+                      </select>
+                    </div>
+
+                    <label>
+                      <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">
+                        Tarifa Mensual del Servicio ($/mes)
+                      </span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="0.01"
+                        required
+                        value={form.dailyRate}
+                        onChange={e => setForm({ ...form, dailyRate: Number(e.target.value) })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                      />
+                    </label>
+
+                    <label className="sm:col-span-2">
+                      <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">
+                        Nombre o descripción del servicio a prestar
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={form.customServiceName}
+                        onChange={e => setForm({ ...form, customServiceName: e.target.value })}
+                        placeholder="Ej. Servicio de Mantenimiento y Actualizaciones de Consola"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                      />
+                    </label>
+                  </>
+                )}
+
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de inicio del contrato</span>
+                  <DatePicker value={form.startDate} onChange={val => setForm({ ...form, startDate: val })} />
+                </label>
+
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración inicial (meses)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={form.days}
+                    onChange={e => setForm({ ...form, days: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </label>
+
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Depósito de garantía (opcional)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.deposit}
+                    onChange={e => setForm({ ...form, deposit: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </label>
+
+                <div className="rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/80 border border-indigo-100 dark:border-indigo-900 text-slate-900 dark:text-white p-4">
+                  <span className="block text-xs text-slate-600 dark:text-white/70">
+                    Total contrato mensual · vence {dueDate.toLocaleDateString('es-VE')} (Renovable)
+                  </span>
+                  <strong className="font-display text-2xl text-indigo-600 dark:text-white">{fmtMoney(total)}</strong>
+                </div>
+
+                {error && (
+                  <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                    {error}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">{editingId ? 'Guardar cambios' : 'Confirmar alquiler'}</button></div>
+
+              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors"
+                >
+                  {editingId ? 'Guardar cambios' : 'Confirmar alquiler'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -1640,29 +2178,244 @@ function DeliveriesSection({ inventory }: { inventory: Product[] }) {
 
 // ─── Admin: Technical Service ─────────────────────────────────────────────────
 
-function TechnicalSection() {
+function TechnicalSection({
+  setRentals,
+  setFinancingPlans,
+}: {
+  setRentals?: React.Dispatch<React.SetStateAction<Rental[]>>;
+  setFinancingPlans?: React.Dispatch<React.SetStateAction<FinancingPlan[]>>;
+}) {
   const today = new Date().toISOString().slice(0, 10);
-  const emptyForm = { clientName: '', device: '', issue: '', receiveDate: today, estimatedDate: today, technician: '', cost: 0, status: 'received' as TechService['status'], notes: '' };
+  const emptyForm = {
+    clientName: '',
+    device: '',
+    issue: '',
+    receiveDate: today,
+    estimatedDate: today,
+    technician: '',
+    cost: 0,
+    status: 'received' as TechService['status'],
+    paymentModality: 'cash' as 'cash' | 'installments' | 'rental',
+    notes: '',
+  };
   const [services, setServices] = useApiData<TechService[]>(api.techServices.list, []);
   const [clients] = useApiData<Client[]>(api.clients.list, []);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
-  const filtered = services.filter(t => !search || t.clientName.toLowerCase().includes(search.toLowerCase()) || t.device.toLowerCase().includes(search.toLowerCase()));
+  const filtered = services.filter(
+    t =>
+      !search ||
+      t.clientName.toLowerCase().includes(search.toLowerCase()) ||
+      t.device.toLowerCase().includes(search.toLowerCase())
+  );
 
   const statusLabel: Record<string, string> = {
-    received: 'Recibido', diagnosing: 'Diagnóstico', repairing: 'Reparando', ready: 'Listo', delivered: 'Entregado'
+    received: 'Recibido',
+    diagnosing: 'Diagnóstico',
+    repairing: 'Reparando',
+    ready: 'Listo',
+    delivered: 'Entregado',
   };
+
+  const handleConvertToFinancing = async (t: TechService) => {
+    const cost = Number(t.cost) || 60;
+    const initial = Math.round(cost * 0.3);
+    const planId = `FIN-TECH-${t.id}`;
+    const schedule = generateInstallmentSchedule({
+      planId,
+      startDate: today,
+      totalAmount: cost,
+      initialPayment: initial,
+      installmentsCount: 3,
+      initialPaymentMethod: 'cash',
+      refDate: today,
+    });
+    const newPlan: FinancingPlan = evaluateFinancingPlan(
+      {
+        id: planId,
+        clientName: t.clientName,
+        productName: `Servicio Técnico: ${t.device} (${t.issue})`,
+        modality: 'installments',
+        itemType: 'service',
+        startDate: today,
+        totalAmount: cost,
+        initialPayment: initial,
+        financedAmount: Number((cost - initial).toFixed(2)),
+        installmentsCount: 3,
+        frequencyDays: 15,
+        status: 'active',
+        notes: `Servicio técnico #${t.id} financiado en 3 cuotas quincenales`,
+        installments: schedule,
+      },
+      today
+    );
+
+    if (setFinancingPlans) {
+      setFinancingPlans(cur => [newPlan, ...cur]);
+    }
+    setServices(cur =>
+      cur.map(s => (s.id === t.id ? { ...s, paymentModality: 'installments', financingPlanId: planId } : s))
+    );
+    try {
+      await api.techServices.update(t.id, {
+        client_name: t.clientName,
+        device: t.device,
+        issue: t.issue,
+        receive_date: t.receiveDate,
+        estimated_date: t.estimatedDate,
+        technician: t.technician,
+        cost: t.cost,
+        status: t.status,
+        notes: t.notes,
+        payment_modality: 'installments',
+        financing_plan_id: planId,
+      });
+    } catch {
+      /* best-effort */
+    }
+
+    await alertSuccess(
+      '¡Servicio Financiado en Cuotas!',
+      `Se generó un plan quincenal en cuotas para ${t.clientName} (${t.device}) por $${cost.toFixed(2)}. Ya está activo en el módulo de Financiamiento.`
+    );
+  };
+
+  const handleConvertToRental = async (t: TechService) => {
+    const monthlyRate = Number(t.cost) || 35;
+    const due = new Date(`${today}T12:00:00`);
+    due.setMonth(due.getMonth() + 1);
+    const rentalId = `RNT-SRV-${t.id}`;
+    const newRental: Rental = {
+      id: rentalId,
+      clientName: t.clientName,
+      product: `Mantenimiento / Servicio: ${t.device}`,
+      rentalType: 'service',
+      startDate: today,
+      dueDate: due.toISOString().slice(0, 10),
+      dailyRate: monthlyRate,
+      totalDays: 1,
+      amount: monthlyRate,
+      deposit: 0,
+      status: 'active',
+      renewalsCount: 0,
+    };
+
+    if (setRentals) {
+      setRentals(cur => [newRental, ...cur]);
+    }
+    setServices(cur => cur.map(s => (s.id === t.id ? { ...s, paymentModality: 'rental', rentalId } : s)));
+    try {
+      await api.techServices.update(t.id, {
+        client_name: t.clientName,
+        device: t.device,
+        issue: t.issue,
+        receive_date: t.receiveDate,
+        estimated_date: t.estimatedDate,
+        technician: t.technician,
+        cost: t.cost,
+        status: t.status,
+        notes: t.notes,
+        payment_modality: 'rental',
+        rental_id: rentalId,
+      });
+    } catch {
+      /* best-effort */
+    }
+
+    await alertSuccess(
+      '¡Servicio en Alquiler Mensual!',
+      `Se generó un contrato de alquiler mensual renovable para ${t.clientName} por $${monthlyRate.toFixed(2)}/mes. Podrá ser renovado en el módulo de Alquileres.`
+    );
+  };
+
   const saveService = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.clientName || form.device.trim().length < 3 || form.issue.trim().length < 5 || !form.technician) { setError('Completa cliente, dispositivo, falla y técnico responsable.'); return; }
-    if (form.estimatedDate < form.receiveDate) { setError('La fecha estimada no puede ser anterior a la recepción.'); return; }
+    if (!form.clientName || form.device.trim().length < 3 || form.issue.trim().length < 5 || !form.technician) {
+      setError('Completa cliente, dispositivo, falla y técnico responsable.');
+      return;
+    }
+    if (form.estimatedDate < form.receiveDate) {
+      setError('La fecha estimada no puede ser anterior a la recepción.');
+      return;
+    }
     const client = clients.find(c => c.name === form.clientName);
     try {
-      const created = await api.techServices.create({ client_id: client ? Number(client.id) : null, client_name: form.clientName, device: form.device.trim(), issue: form.issue.trim(), receive_date: form.receiveDate, estimated_date: form.estimatedDate, technician: form.technician, cost: Number(form.cost), status: form.status, notes: form.notes.trim() });
-      setServices(current => [mapTechService(created), ...current]);
-      setForm(emptyForm); setError(''); setModalOpen(false);
+      const created = await api.techServices.create({
+        client_id: client ? Number(client.id) : null,
+        client_name: form.clientName,
+        device: form.device.trim(),
+        issue: form.issue.trim(),
+        receive_date: form.receiveDate,
+        estimated_date: form.estimatedDate,
+        technician: form.technician,
+        cost: Number(form.cost),
+        status: form.status,
+        payment_modality: form.paymentModality,
+        notes: form.notes.trim(),
+      });
+      const mapped = mapTechService(created);
+      setServices(current => [mapped, ...current]);
+
+      // Si se configuró en cuotas o alquiler desde el inicio
+      if (form.paymentModality === 'installments' && setFinancingPlans) {
+        const cost = Number(form.cost) || 60;
+        const initial = Math.round(cost * 0.3);
+        const planId = `FIN-TECH-${mapped.id}`;
+        const schedule = generateInstallmentSchedule({
+          planId,
+          startDate: today,
+          totalAmount: cost,
+          initialPayment: initial,
+          installmentsCount: 3,
+          initialPaymentMethod: 'cash',
+          refDate: today,
+        });
+        const newPlan = evaluateFinancingPlan(
+          {
+            id: planId,
+            clientName: form.clientName,
+            productName: `Servicio: ${form.device.trim()}`,
+            modality: 'installments',
+            itemType: 'service',
+            startDate: today,
+            totalAmount: cost,
+            initialPayment: initial,
+            financedAmount: Number((cost - initial).toFixed(2)),
+            installmentsCount: 3,
+            frequencyDays: 15,
+            status: 'active',
+            notes: 'Servicio técnico financiado en cuotas quincenales',
+            installments: schedule,
+          },
+          today
+        );
+        setFinancingPlans(cur => [newPlan, ...cur]);
+      } else if (form.paymentModality === 'rental' && setRentals) {
+        const monthlyRate = Number(form.cost) || 35;
+        const due = new Date(`${today}T12:00:00`);
+        due.setMonth(due.getMonth() + 1);
+        const newRental: Rental = {
+          id: `RNT-SRV-${mapped.id}`,
+          clientName: form.clientName,
+          product: `Servicio: ${form.device.trim()}`,
+          rentalType: 'service',
+          startDate: today,
+          dueDate: due.toISOString().slice(0, 10),
+          dailyRate: monthlyRate,
+          totalDays: 1,
+          amount: monthlyRate,
+          deposit: 0,
+          status: 'active',
+          renewalsCount: 0,
+        };
+        setRentals(cur => [newRental, ...cur]);
+      }
+
+      setForm(emptyForm);
+      setError('');
+      setModalOpen(false);
     } catch {
       setError('No se pudo crear la orden. Verifica la conexión con el servidor.');
     }
@@ -1670,7 +2423,11 @@ function TechnicalSection() {
 
   return (
     <div>
-      <SectionHeader title="Servicio Técnico" subtitle={`${services.filter(t=>t.status!=='delivered').length} activos · ${services.filter(t=>t.status==='ready').length} listos para entrega`} action={<AddBtn label="Nueva Orden" onClick={()=>setModalOpen(true)} />} />
+      <SectionHeader
+        title="Servicio Técnico y Reparaciones"
+        subtitle={`${services.filter(t => t.status !== 'delivered').length} activos · ${services.filter(t => t.status === 'ready').length} listos para entrega · Pagos de contado, en cuotas o alquiler mensual`}
+        action={<AddBtn label="Nueva Orden" onClick={() => setModalOpen(true)} />}
+      />
       <div className="flex items-center gap-3 mb-4">
         <SearchBar value={search} onChange={setSearch} placeholder="Buscar por cliente o dispositivo..." />
       </div>
@@ -1679,8 +2436,10 @@ function TechnicalSection() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>
-                {['ID', 'Cliente', 'Dispositivo', 'Falla', 'Recibido', 'Est. Entrega', 'Técnico', 'Costo', 'Estado', 'Notas'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>
+                {['ID', 'Cliente', 'Dispositivo', 'Falla', 'Modalidad', 'Recibido', 'Est. Entrega', 'Técnico', 'Costo', 'Estado', 'Opciones de Pago'].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1689,14 +2448,48 @@ function TechnicalSection() {
                 <tr key={t.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-muted">{t.id}</td>
                   <td className="px-4 py-3 font-500 text-gtext whitespace-nowrap">{t.clientName}</td>
-                  <td className="px-4 py-3 text-gtext whitespace-nowrap">{t.device}</td>
+                  <td className="px-4 py-3 text-gtext whitespace-nowrap font-600">{t.device}</td>
                   <td className="px-4 py-3 text-muted max-w-[160px] truncate text-xs">{t.issue}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {t.paymentModality === 'installments' ? (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-700 bg-purple/15 text-purple border border-purple/30 flex items-center gap-1 w-fit">
+                        <CreditCard size={11} /> En Cuotas
+                      </span>
+                    ) : t.paymentModality === 'rental' ? (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-700 bg-blue/15 text-blue border border-blue/30 flex items-center gap-1 w-fit">
+                        <RotateCcw size={11} /> Alquiler Renovable
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-600 bg-slate-200/70 dark:bg-slate-800 text-muted border border-slate-300 dark:border-slate-700 w-fit">
+                        Contado
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(t.receiveDate)}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(t.estimatedDate)}</td>
                   <td className="px-4 py-3 text-gtext whitespace-nowrap">{t.technician}</td>
                   <td className="px-4 py-3 font-600 text-success">{fmtMoney(t.cost)}</td>
-                  <td className="px-4 py-3"><Badge cls={t.status}>{statusLabel[t.status]}</Badge></td>
-                  <td className="px-4 py-3 text-muted text-xs max-w-[160px] truncate">{t.notes || '—'}</td>
+                  <td className="px-4 py-3">
+                    <Badge cls={t.status}>{statusLabel[t.status]}</Badge>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleConvertToFinancing(t)}
+                        title="Financiar este servicio en cuotas quincenales (inicial + 2 a 4 cuotas)"
+                        className="px-2 py-1 rounded-lg bg-purple/10 hover:bg-purple/20 text-purple text-xs font-600 flex items-center gap-1 transition-colors"
+                      >
+                        <CreditCard size={12} /> En Cuotas
+                      </button>
+                      <button
+                        onClick={() => handleConvertToRental(t)}
+                        title="Pasar este servicio a alquiler mensual renovable"
+                        className="px-2 py-1 rounded-lg bg-blue/10 hover:bg-blue/20 text-blue text-xs font-600 flex items-center gap-1 transition-colors"
+                      >
+                        <RotateCcw size={12} /> Alquiler
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1704,20 +2497,197 @@ function TechnicalSection() {
         </div>
       </div>
 
-      {modalOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6"><button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={()=>setModalOpen(false)} /><div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl"><div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" /><div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center"><Wrench size={22}/></div><div><div className="text-[11px] font-700 tracking-[.14em] text-amber-600 dark:text-amber-400 uppercase">Recepción técnica</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Crear orden de servicio</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Documenta el equipo, la falla reportada y la planificación inicial.</p></div></div><button onClick={()=>setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19}/></button></div>
-      <form onSubmit={saveService} className="p-7"><div className="grid sm:grid-cols-2 gap-5">
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente</option>{clients.map(c=><option key={c.id}>{c.name}</option>)}</select></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Dispositivo recibido</span><input required value={form.device} onChange={e=>setForm({...form,device:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. PlayStation 5 Slim" /></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Falla reportada por el cliente</span><textarea required value={form.issue} onChange={e=>setForm({...form,issue:e.target.value})} className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Describe síntomas, errores, daños físicos y cuándo comenzó la falla" /></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de recepción</span><DatePicker value={form.receiveDate} onChange={val=>setForm({...form,receiveDate:val})} /></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Entrega estimada</span><DatePicker value={form.estimatedDate} onChange={val=>setForm({...form,estimatedDate:val})} /></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Técnico responsable</span><select required value={form.technician} onChange={e=>setForm({...form,technician:e.target.value})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="">Asignar técnico</option><option>Miguel Ángel</option><option>Roberto Silva</option><option>Daniel Rojas</option></select></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Costo estimado</span><div className="relative"><DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="number" min="0" step="0.01" value={form.cost} onChange={e=>setForm({...form,cost:Number(e.target.value)})} className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></div></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Estado inicial</span><select value={form.status} onChange={e=>setForm({...form,status:e.target.value as TechService['status']})} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="received">Recibido</option><option value="diagnosing">En diagnóstico</option><option value="repairing">En reparación</option><option value="ready">Listo para entrega</option></select></label>
-        <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Prioridad</span><select className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
-        <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Notas internas y condiciones de recepción</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Accesorios recibidos, estado físico, observaciones o diagnóstico preliminar" /></label>
-        {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
-      </div><div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">Se generará un número de orden automáticamente.</p><div className="flex gap-3"><button type="button" onClick={()=>setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Crear orden técnica</button></div></div></form></div></div>}
+      {modalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
+          <button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
+          <div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
+            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <Wrench size={22} />
+                </div>
+                <div>
+                  <div className="text-[11px] font-700 tracking-[.14em] text-amber-600 dark:text-amber-400 uppercase">Recepción técnica</div>
+                  <h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Crear orden de servicio</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Documenta el equipo, la falla y elige si se prestará de contado, en cuotas o en alquiler mensual.
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X size={19} />
+              </button>
+            </div>
+            <form onSubmit={saveService} className="p-7">
+              <div className="grid sm:grid-cols-2 gap-5">
+                <div className="sm:col-span-2">
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Modalidad de Prestación y Pago</span>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, paymentModality: 'cash' })}
+                      className={`px-3 py-2.5 rounded-xl border text-xs font-700 transition-all flex items-center justify-center gap-1.5 ${
+                        form.paymentModality === 'cash'
+                          ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <DollarSign size={14} /> De Contado (Único)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, paymentModality: 'installments' })}
+                      className={`px-3 py-2.5 rounded-xl border text-xs font-700 transition-all flex items-center justify-center gap-1.5 ${
+                        form.paymentModality === 'installments'
+                          ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <CreditCard size={14} /> En Cuotas Quincenales
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, paymentModality: 'rental' })}
+                      className={`px-3 py-2.5 rounded-xl border text-xs font-700 transition-all flex items-center justify-center gap-1.5 ${
+                        form.paymentModality === 'rental'
+                          ? 'bg-[#6153d6] border-[#6153d6] text-white shadow-md'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      <RotateCcw size={14} /> En Alquiler Renovable
+                    </button>
+                  </div>
+                </div>
+
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span>
+                  <select
+                    required
+                    value={form.clientName}
+                    onChange={e => setForm({ ...form, clientName: e.target.value })}
+                    className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  >
+                    <option value="">Seleccionar cliente</option>
+                    {clients.map(c => (
+                      <option key={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Dispositivo recibido</span>
+                  <input
+                    required
+                    value={form.device}
+                    onChange={e => setForm({ ...form, device: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    placeholder="Ej. PlayStation 5 Slim"
+                  />
+                </label>
+                <label className="sm:col-span-2">
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Falla reportada por el cliente</span>
+                  <textarea
+                    required
+                    value={form.issue}
+                    onChange={e => setForm({ ...form, issue: e.target.value })}
+                    className="w-full min-h-24 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    placeholder="Describe síntomas, errores, daños físicos y cuándo comenzó la falla"
+                  />
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Fecha de recepción</span>
+                  <DatePicker value={form.receiveDate} onChange={val => setForm({ ...form, receiveDate: val })} />
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Entrega estimada</span>
+                  <DatePicker value={form.estimatedDate} onChange={val => setForm({ ...form, estimatedDate: val })} />
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Técnico responsable</span>
+                  <select
+                    required
+                    value={form.technician}
+                    onChange={e => setForm({ ...form, technician: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  >
+                    <option value="">Asignar técnico</option>
+                    <option>Miguel Ángel</option>
+                    <option>Roberto Silva</option>
+                    <option>Daniel Rojas</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">
+                    {form.paymentModality === 'rental' ? 'Tarifa mensual de alquiler ($/mes)' : 'Costo estimado ($)'}
+                  </span>
+                  <div className="relative">
+                    <DollarSign size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.cost}
+                      onChange={e => setForm({ ...form, cost: Number(e.target.value) })}
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </label>
+                <label>
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Estado inicial</span>
+                  <select
+                    value={form.status}
+                    onChange={e => setForm({ ...form, status: e.target.value as TechService['status'] })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  >
+                    <option value="received">Recibido</option>
+                    <option value="diagnosing">En diagnóstico</option>
+                    <option value="repairing">En reparación</option>
+                    <option value="ready">Listo para entrega</option>
+                  </select>
+                </label>
+                <label className="sm:col-span-2">
+                  <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Notas internas y condiciones</span>
+                  <textarea
+                    value={form.notes}
+                    onChange={e => setForm({ ...form, notes: e.target.value })}
+                    className="w-full min-h-20 resize-none px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    placeholder="Accesorios recibidos, estado físico u observaciones"
+                  />
+                </label>
+                {error && (
+                  <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                    {error}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {form.paymentModality === 'installments'
+                    ? 'Se creará la orden y se programará el financiamiento quincenal en cuotas.'
+                    : form.paymentModality === 'rental'
+                    ? 'Se creará la orden y se generará el contrato mensual renovable en Alquileres.'
+                    : 'Se generará la orden técnica de contado.'}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors"
+                  >
+                    Crear orden técnica
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2075,11 +3045,12 @@ function ContactLocationSection() {
 
 // ─── Admin Layout ─────────────────────────────────────────────────────────────
 
-const buildSidebarItems = (c: { clients: number; rentalsActive: number; sales: number; deliveriesPending: number; techActive: number; warrantiesActive: number; lowStock: number }): { key: AdminSection; label: string; icon: React.ReactNode; count?: number }[] => [
+const buildSidebarItems = (c: { clients: number; rentalsActive: number; sales: number; financingAttention: number; deliveriesPending: number; techActive: number; warrantiesActive: number; lowStock: number }): { key: AdminSection; label: string; icon: React.ReactNode; count?: number }[] => [
   { key: 'dashboard', label: 'Panel Principal', icon: <LayoutDashboard size={18} /> },
   { key: 'clients', label: 'Clientes', icon: <Users size={18} />, count: c.clients },
   { key: 'rentals', label: 'Alquileres', icon: <Gamepad2 size={18} />, count: c.rentalsActive },
   { key: 'sales', label: 'Ventas', icon: <ShoppingBag size={18} />, count: c.sales },
+  { key: 'financing', label: 'Financiamiento', icon: <CreditCard size={18} />, count: c.financingAttention },
   { key: 'deliveries', label: 'Notas de Entrega', icon: <Truck size={18} />, count: c.deliveriesPending },
   { key: 'technical', label: 'Servicio Técnico', icon: <Wrench size={18} />, count: c.techActive },
   { key: 'warranties', label: 'Garantías', icon: <Shield size={18} />, count: c.warrantiesActive },
@@ -2190,11 +3161,15 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
   const [deliveriesList] = useApiData<DeliveryNote[]>(api.deliveries.list, []);
   const [servicesList] = useApiData<TechService[]>(api.techServices.list, []);
   const [warrantiesList] = useApiData<Warranty[]>(api.warranties.list, []);
+  const [financingPlans, setFinancingPlans] = useState<FinancingPlan[]>(() => loadFinancingPlans());
+  useEffect(() => { saveFinancingPlans(financingPlans); }, [financingPlans]);
+  const financingAlerts = useMemo(() => computeFinancingAlerts(financingPlans), [financingPlans]);
 
   const SIDEBAR_ITEMS = buildSidebarItems({
     clients: clientsList.length,
     rentalsActive: rentals.filter(r=>r.status==='active').length,
     sales: salesList.length,
+    financingAttention: financingAlerts.overdueClientsCount > 0 ? financingAlerts.overdueClientsCount : financingPlans.filter(p => p.status !== 'completed').length,
     deliveriesPending: deliveriesList.filter(d=>d.status==='pending').length,
     techActive: servicesList.filter(t=>t.status!=='delivered').length,
     warrantiesActive: warrantiesList.filter(w=>w.status==='active').length,
@@ -2238,12 +3213,13 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
   }
 
   const SectionContent = {
-    dashboard: <Dashboard />,
+    dashboard: <Dashboard financingPlans={financingPlans} />,
     clients: <ClientsSection />,
     rentals: <RentalsSection rentals={rentals} setRentals={setRentals} inventory={inventory} setInventory={setInventory} />,
     sales: <SalesSection inventory={inventory} setInventory={setInventory} />,
+    financing: <FinancingSection plans={financingPlans} setPlans={setFinancingPlans} clients={clientsList} inventory={inventory} />,
     deliveries: <DeliveriesSection inventory={inventory} />,
-    technical: <TechnicalSection />,
+    technical: <TechnicalSection setRentals={setRentals} setFinancingPlans={setFinancingPlans} />,
     warranties: <WarrantiesSection inventory={inventory} />,
     purchases: <PurchasesSection inventory={inventory} setInventory={setInventory} />,
     contact: <ContactLocationSection />,
