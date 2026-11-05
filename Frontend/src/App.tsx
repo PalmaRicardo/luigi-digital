@@ -1,189 +1,24 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Users, Car, Settings, ShoppingBag, Wrench, Shield, Package,
-  Search, Plus, TrendingUp, Calendar, AlertTriangle, CheckCircle2, Star, Tag,
-  Phone, Mail, MapPin, Hash, DollarSign, ArrowUpRight, CreditCard,
-  Menu, X, ChevronRight, ChevronLeft, Layers, RotateCcw, Clipboard, Filter, Lock, LogOut,
-  Sun, Moon, SlidersHorizontal, Send, Navigation, MessageSquare, Gauge, Droplets
+  Search, Plus, Calendar, AlertTriangle, CheckCircle2, Star, Tag,
+  Phone, Mail, MapPin, DollarSign, ArrowUpRight,
+  Menu, X, ChevronRight, ChevronLeft, Layers, RotateCcw, Filter, Lock, LogOut,
+  Sun, Moon, SlidersHorizontal, Navigation, MessageSquare, Droplets, Zap
 } from 'lucide-react';
+import { api } from './api';
+import type {
+  Product, ProductCategory, ServiceType, PaymentMethod, Vehicle, Client,
+  ServiceOrder, Sale, Purchase, Warranty, ContactMessage, StoreInfo
+} from './api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type View = 'catalog' | 'admin';
 type AdminSection = 'dashboard' | 'clients' | 'vehicles' | 'serviceOrders' | 'sales' | 'purchases' | 'warranties' | 'contact';
 type CatalogCategory = 'all' | 'parts' | 'oils' | 'filters' | 'batteries' | 'tires' | 'services';
-type ProductCategory = 'part' | 'oil' | 'filter' | 'battery' | 'tire' | 'service';
-type ServiceType = 'oil_change' | 'maintenance' | 'repair' | 'inspection' | 'tire' | 'battery';
 type FilterType = 'all' | 'sale' | 'service';
-type BrandFilter = 'all' | 'Toyota' | 'Ford' | 'Chevrolet' | 'Generic';
-type PaymentMethod = 'cash' | 'card' | 'transfer';
-
-interface Vehicle {
-  id: string;
-  clientId: string;
-  plate: string;
-  brand: string;
-  model: string;
-  year: number;
-  vin?: string;
-  motor?: string;
-}
-
-interface Client {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  idDoc: string;
-  address: string;
-  joinDate: string;
-  status: 'active' | 'inactive';
-  vehicles?: Vehicle[];
-}
-
-interface Product {
-  id: string;
-  name: string;
-  category: ProductCategory;
-  brand: BrandFilter;
-  salePrice?: number;
-  type: 'sale' | 'service';
-  image: string;
-  stock: number;
-  description: string;
-  compatibility?: string;
-  featured?: boolean;
-}
-
-interface ServiceOrder {
-  id: string;
-  clientId: string;
-  clientName: string;
-  vehicleId: string;
-  vehicleDesc: string;
-  serviceType: ServiceType;
-  productsUsed: { productId: string; name: string; qty: number; price: number }[];
-  laborCost: number;
-  total: number;
-  date: string;
-  dueDate: string;
-  status: 'pending' | 'in_progress' | 'ready' | 'completed' | 'cancelled';
-  notes: string;
-  technician: string;
-}
-
-interface Sale {
-  id: string;
-  clientName: string;
-  products: string[];
-  date: string;
-  subtotal: number;
-  discount: number;
-  total: number;
-  paymentMethod: PaymentMethod;
-}
-
-interface Purchase {
-  id: string;
-  supplier: string;
-  product: string;
-  quantity: number;
-  unitCost: number;
-  total: number;
-  date: string;
-  invoiceNumber: string;
-  status: 'received' | 'pending' | 'returned';
-}
-
-interface Warranty {
-  id: string;
-  clientName: string;
-  product: string;
-  serial: string;
-  purchaseDate: string;
-  expiryDate: string;
-  status: 'active' | 'expired' | 'claimed';
-  type: 'store' | 'manufacturer';
-}
-
-interface ContactMessage {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  subject: string;
-  message: string;
-  date: string;
-  status: 'unread' | 'read' | 'replied';
-}
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const VEHICLES: Vehicle[] = [
-  { id: 'v1', clientId: 'c1', plate: 'ABC-123', brand: 'Toyota', model: 'Corolla', year: 2018, vin: 'JTDBU4EE3B9123456', motor: '1.8L' },
-  { id: 'v2', clientId: 'c1', plate: 'XYZ-789', brand: 'Ford', model: 'F-150', year: 2020, vin: '1FTFW1EF7EKG12345', motor: '5.0L V8' },
-  { id: 'v3', clientId: 'c2', plate: 'DEF-456', brand: 'Chevrolet', model: 'Spark', year: 2016, vin: 'KL8CB6S99GC123456', motor: '1.4L' },
-  { id: 'v4', clientId: 'c3', plate: 'GHI-321', brand: 'Toyota', model: 'Hilux', year: 2021, vin: 'MR0HA3CDX00012345', motor: '2.8L' },
-  { id: 'v5', clientId: 'c4', plate: 'JKL-654', brand: 'Ford', model: 'Escape', year: 2019, vin: '1FMCU9G99KUA12345', motor: '2.0L EcoBoost' },
-  { id: 'v6', clientId: 'c5', plate: 'MNO-987', brand: 'Chevrolet', model: 'Silverado', year: 2022, vin: '3GCUYDED7NG123456', motor: '5.3L V8' },
-];
-
-const PRODUCTS: Product[] = [
-  { id: 'p1', name: 'Filtro de Aceite Toyota', category: 'filter', brand: 'Toyota', salePrice: 18, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/c/cb/Engine_oil_filter.JPG', stock: 24, description: 'Filtro de aceite original para Corolla, Yaris, RAV4', compatibility: 'Toyota', featured: true },
-  { id: 'p2', name: 'Aceite Sintético 5W-30', category: 'oil', brand: 'Generic', salePrice: 32, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/5/5a/Castrol_oil_cans.jpg', stock: 45, description: 'Aceite 100% sintético API SP, 1 cuarto', compatibility: 'Universal', featured: true },
-  { id: 'p3', name: 'Batería 24F-600', category: 'battery', brand: 'Generic', salePrice: 145, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/9/94/Exhausted_battery.JPG', stock: 12, description: 'Batería 600 CCA, garantía 12 meses', compatibility: 'Sedanes / SUVs medianos' },
-  { id: 'p4', name: 'Pastillas de Freno Delanteras', category: 'part', brand: 'Generic', salePrice: 85, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/9/92/Brake_pad.jpg', stock: 18, description: 'Pastillas cerámicas de alto rendimiento', compatibility: 'Toyota / Ford / Chevrolet' },
-  { id: 'p5', name: 'Llanta 205/55 R16', category: 'tire', brand: 'Generic', salePrice: 110, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/2/22/2017-09-28_%28593%29_Michelin_Energy_Saver_195-55_R_16_91_V_tire_at_Bahnhof_Stockerau.jpg', stock: 8, description: 'Llanta radial touring, 50.000 millas', compatibility: 'Universal 16"' },
-  { id: 'p6', name: 'Cambio de Aceite + Filtro', category: 'service', brand: 'Generic', salePrice: 55, type: 'service', image: 'https://upload.wikimedia.org/wikipedia/commons/7/75/Woman_mechanic_working_on_engine_%28cropped%29.jpeg', stock: 99, description: 'Servicio completo: drenado, filtro y aceite incluido', compatibility: 'Universal', featured: true },
-  { id: 'p7', name: 'Filtro de Aire Ford', category: 'filter', brand: 'Ford', salePrice: 22, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/c/cb/Dirty-air-filter.jpg', stock: 15, description: 'Filtro de aire motor para F-150, Escape, Explorer', compatibility: 'Ford' },
-  { id: 'p8', name: 'Aceite 10W-40 Semi-Sintético', category: 'oil', brand: 'Generic', salePrice: 26, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/0/0a/Fuchs_Motor_Oil.jpg', stock: 30, description: 'Aceite semi-sintético para motores de alto kilometraje', compatibility: 'Universal' },
-  { id: 'p9', name: 'Bujías Iridium (juego)', category: 'part', brand: 'Generic', salePrice: 42, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/1/10/Spark_plugs.jpg', stock: 20, description: 'Bujías de iridium, mejor combustión y durabilidad', compatibility: 'Toyota / Ford / Chevrolet' },
-  { id: 'p10', name: 'Revisión General 21 Puntos', category: 'service', brand: 'Generic', salePrice: 75, type: 'service', image: 'https://upload.wikimedia.org/wikipedia/commons/3/34/Car_workshop_tools.jpg', stock: 99, description: 'Inspección completa: frenos, suspensiones, fluidos y más', compatibility: 'Universal', featured: true },
-  { id: 'p11', name: 'Filtro de Combustible', category: 'filter', brand: 'Generic', salePrice: 28, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Framoilfilterassortment.JPG', stock: 10, description: 'Filtro de gasolina compatible con múltiples marcas', compatibility: 'Universal' },
-  { id: 'p12', name: 'Kit de Frenos Traseros', category: 'part', brand: 'Generic', salePrice: 95, type: 'sale', image: 'https://upload.wikimedia.org/wikipedia/commons/7/79/New_rotor_on_%285049374539%29.jpg', stock: 9, description: 'Pastillas y discos traseros incluidos', compatibility: 'Toyota / Ford' },
-];
-
-const CLIENTS: Client[] = [
-  { id: 'c1', name: 'Carlos Mendoza', phone: '0412-555-1234', email: 'carlos.m@gmail.com', idDoc: 'V-12345678', address: 'Av. Principal, Urb. Las Palmas, Qta 5', joinDate: '2024-01-15', status: 'active', vehicles: [VEHICLES[0], VEHICLES[1]] },
-  { id: 'c2', name: 'María García', phone: '0424-555-5678', email: 'maria.g@gmail.com', idDoc: 'V-23456789', address: 'Calle 5, Urb. El Paraíso, Casa 12', joinDate: '2024-02-20', status: 'active', vehicles: [VEHICLES[2]] },
-  { id: 'c3', name: 'José Rodríguez', phone: '0416-555-9012', email: 'jose.r@gmail.com', idDoc: 'V-34567890', address: 'Torre Central, Piso 3, Apt 3B', joinDate: '2024-03-10', status: 'active', vehicles: [VEHICLES[3]] },
-  { id: 'c4', name: 'Ana Martínez', phone: '0414-555-3456', email: 'ana.m@hotmail.com', idDoc: 'V-45678901', address: 'Sector Norte, Casa 15', joinDate: '2024-01-05', status: 'inactive', vehicles: [VEHICLES[4]] },
-  { id: 'c5', name: 'Luis Pérez', phone: '0426-555-7890', email: 'luis.p@gmail.com', idDoc: 'V-56789012', address: 'Urb. Oeste, Qta 8, Calle Mango', joinDate: '2024-04-18', status: 'active', vehicles: [VEHICLES[5]] },
-  { id: 'c6', name: 'Sofía Torres', phone: '0412-555-2468', email: 'sofia.t@gmail.com', idDoc: 'V-67890123', address: 'Res. Las Américas, Piso 7, Apt 7A', joinDate: '2024-05-22', status: 'active' },
-];
-
-const SERVICE_ORDERS: ServiceOrder[] = [
-  { id: 'so1', clientId: 'c1', clientName: 'Carlos Mendoza', vehicleId: 'v1', vehicleDesc: 'Toyota Corolla ABC-123', serviceType: 'oil_change', productsUsed: [{ productId: 'p2', name: 'Aceite Sintético 5W-30', qty: 4, price: 32 }, { productId: 'p1', name: 'Filtro de Aceite Toyota', qty: 1, price: 18 }], laborCost: 25, total: 171, date: '2024-09-20', dueDate: '2024-09-20', status: 'completed', notes: 'Cliente solicita revisión de frenos próxima visita.', technician: 'Miguel Ángel' },
-  { id: 'so2', clientId: 'c2', clientName: 'María García', vehicleId: 'v3', vehicleDesc: 'Chevrolet Spark DEF-456', serviceType: 'maintenance', productsUsed: [{ productId: 'p7', name: 'Filtro de Aire Ford', qty: 1, price: 22 }], laborCost: 45, total: 67, date: '2024-09-22', dueDate: '2024-09-23', status: 'in_progress', notes: 'Revisión general programada.', technician: 'Roberto Silva' },
-  { id: 'so3', clientId: 'c3', clientName: 'José Rodríguez', vehicleId: 'v4', vehicleDesc: 'Toyota Hilux GHI-321', serviceType: 'repair', productsUsed: [{ productId: 'p4', name: 'Pastillas de Freno Delanteras', qty: 1, price: 85 }], laborCost: 60, total: 145, date: '2024-09-18', dueDate: '2024-09-25', status: 'ready', notes: 'Cambio de pastillas delanteras.', technician: 'Miguel Ángel' },
-  { id: 'so4', clientId: 'c5', clientName: 'Luis Pérez', vehicleId: 'v6', vehicleDesc: 'Chevrolet Silverado MNO-987', serviceType: 'battery', productsUsed: [{ productId: 'p3', name: 'Batería 24F-600', qty: 1, price: 145 }], laborCost: 20, total: 165, date: '2024-09-24', dueDate: '2024-09-24', status: 'pending', notes: 'Batería descargada, requiere cambio.', technician: 'Daniel Rojas' },
-];
-
-const SALES: Sale[] = [
-  { id: 's1', clientName: 'Carlos Mendoza', products: ['Aceite Sintético 5W-30 x4', 'Filtro de Aceite Toyota'], date: '2024-09-22', subtotal: 146, discount: 6, total: 140, paymentMethod: 'cash' },
-  { id: 's2', clientName: 'María García', products: ['Filtro de Aire Ford'], date: '2024-09-20', subtotal: 22, discount: 0, total: 22, paymentMethod: 'transfer' },
-  { id: 's3', clientName: 'Luis Pérez', products: ['Batería 24F-600'], date: '2024-09-19', subtotal: 145, discount: 0, total: 145, paymentMethod: 'card' },
-  { id: 's4', clientName: 'Sofía Torres', products: ['Bujías Iridium (juego)', 'Filtro de Aceite Toyota'], date: '2024-09-18', subtotal: 60, discount: 10, total: 50, paymentMethod: 'transfer' },
-];
-
-const PURCHASES: Purchase[] = [
-  { id: 'pc1', supplier: 'Autopartes Venezuela C.A.', product: 'Filtro de Aceite Toyota (caja x24)', quantity: 24, unitCost: 9, total: 216, date: '2024-09-01', invoiceNumber: 'FAC-2024-0891', status: 'received' },
-  { id: 'pc2', supplier: 'Lubricantes del Sur', product: 'Aceite Sintético 5W-30 (caja x12)', quantity: 12, unitCost: 18, total: 216, date: '2024-09-10', invoiceNumber: 'FAC-2024-0945', status: 'received' },
-  { id: 'pc3', supplier: 'Baterías Nacional', product: 'Batería 24F-600 (lote x10)', quantity: 10, unitCost: 85, total: 850, date: '2024-09-20', invoiceNumber: 'FAC-2024-1023', status: 'received' },
-  { id: 'pc4', supplier: 'Autopartes Venezuela C.A.', product: 'Pastillas de Freno (caja x20)', quantity: 20, unitCost: 42, total: 840, date: '2024-09-22', invoiceNumber: 'FAC-2024-1045', status: 'pending' },
-];
-
-const WARRANTIES: Warranty[] = [
-  { id: 'w1', clientName: 'Carlos Mendoza', product: 'Filtro de Aceite Toyota', serial: 'FT-2024-001', purchaseDate: '2024-01-15', expiryDate: '2025-01-15', status: 'active', type: 'store' },
-  { id: 'w2', clientName: 'Luis Pérez', product: 'Batería 24F-600', serial: 'BT-987654', purchaseDate: '2024-03-10', expiryDate: '2025-03-10', status: 'active', type: 'store' },
-  { id: 'w3', clientName: 'José Rodríguez', product: 'Pastillas de Freno Delanteras', serial: 'BK-112233', purchaseDate: '2023-06-20', expiryDate: '2024-06-20', status: 'expired', type: 'manufacturer' },
-];
-
-const CONTACT_MESSAGES: ContactMessage[] = [
-  { id: 'm1', name: 'Gabriel Torres', email: 'gabriel.t@gmail.com', phone: '0412-111-2233', subject: 'Cambio de aceite Toyota', message: 'Buenas tardes, ¿tienen disponibilidad para cambio de aceite este fin de semana?', date: '2024-09-24', status: 'unread' },
-  { id: 'm2', name: 'Elena Rivas', email: 'elena.r@hotmail.com', phone: '0424-999-8877', subject: 'Revisión de frenos', message: 'Hola, mi Ford Escape hace ruido al frenar. ¿Hacen diagnóstico?', date: '2024-09-23', status: 'read' },
-  { id: 'm3', name: 'Marcos Silva', email: 'marcos.silva@yahoo.com', phone: '0414-333-4455', subject: 'Garantía batería', message: 'Compré una batería hace 2 meses y no carga bien.', date: '2024-09-21', status: 'replied' },
-];
+const BUSINESS_NAME = 'Multiservicios Llanos Guaro C.A';
 
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 
@@ -208,7 +43,7 @@ function SearchBar({ value, onChange, placeholder }: { value: string; onChange: 
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? 'Buscar...'}
-        className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-black dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-400 shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all"
+        className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-black dark:text-white placeholder:text-slate-500 dark:placeholder:text-slate-400 shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all"
       />
     </div>
   );
@@ -229,7 +64,7 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 function AddBtn({ label, onClick }: { label: string; onClick?: () => void }) {
   return (
     <button onClick={onClick} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-600 text-white transition-all"
-      style={{ background: '#6153d6', boxShadow: '0 2px 6px rgba(97,83,214,0.18)' }}>
+      style={{ background: 'var(--c-primary)', boxShadow: '0 2px 6px rgba(97,83,214,0.18)' }}>
       <Plus size={15} /> {label}
     </button>
   );
@@ -304,7 +139,7 @@ function DatePicker({
 
   return (
     <div ref={containerRef} className="relative inline-block w-full">
-      <div onClick={() => setIsOpen(!isOpen)} className={`w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700 flex items-center justify-between cursor-pointer select-none transition-all hover:border-indigo-400 dark:hover:border-indigo-500 text-sm ${className}`}>
+      <div onClick={() => setIsOpen(!isOpen)} className={`w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700 flex items-center justify-between cursor-pointer select-none transition-all hover:border-purple text-sm ${className}`}>
         <span className={value ? 'font-500' : 'text-slate-400 dark:text-slate-500'}>{value ? fmtDate(value) : placeholder}</span>
         <Calendar size={16} className="text-slate-400 dark:text-slate-400 flex-shrink-0 ml-2" />
       </div>
@@ -316,7 +151,7 @@ function DatePicker({
             <button type="button" onClick={() => setViewMonth(m => m === 11 ? (setViewYear(y => y + 1), 0) : m + 1)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"><ChevronRight size={16} /></button>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center mb-1">
-            {dayNames.map(d => <span key={d} className="text-[10px] font-700 text-indigo-600 dark:text-indigo-400 uppercase py-1">{d}</span>)}
+            {dayNames.map(d => <span key={d} className="text-[10px] font-700 text-purple-light uppercase py-1">{d}</span>)}
           </div>
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((cell, idx) => {
@@ -325,14 +160,14 @@ function DatePicker({
               const isToday = todayStr === cellStr;
               return (
                 <button key={idx} type="button" onClick={() => selectDate(cell.year, cell.month, cell.day)}
-                  className={`h-8 w-8 text-xs font-500 rounded-lg flex items-center justify-center transition-all ${isSelected ? 'bg-[#6153d6] text-white font-700 shadow-md shadow-indigo-500/30 scale-105' : isToday ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-700 border border-indigo-200 dark:border-indigo-800' : cell.isCurrentMonth ? 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800' : 'text-slate-300 dark:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}>
+                  className={`h-8 w-8 text-xs font-500 rounded-lg flex items-center justify-center transition-all ${isSelected ? 'bg-purple text-white font-700 shadow-md shadow-purple/30 scale-105' : isToday ? 'bg-purple-soft text-purple-light font-700 border border-purple/30' : cell.isCurrentMonth ? 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800' : 'text-slate-300 dark:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}>
                   {cell.day}
                 </button>
               );
             })}
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-            <button type="button" onClick={setToday} className="text-indigo-600 dark:text-indigo-400 font-600 hover:underline">Hoy</button>
+            <button type="button" onClick={setToday} className="text-purple-light font-600 hover:underline">Hoy</button>
             <button type="button" onClick={() => setIsOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-500">Cerrar</button>
           </div>
         </div>
@@ -348,23 +183,44 @@ const CATEGORY_LABELS: Record<CatalogCategory, string> = {
 };
 
 const CAT_MAP: Record<string, ProductCategory> = { parts: 'part', oils: 'oil', filters: 'filter', batteries: 'battery', tires: 'tire', services: 'service' };
-const SERVICE_TYPE_LABELS: Record<ServiceType, string> = { oil_change: 'Cambio de aceite', maintenance: 'Mantenimiento', repair: 'Reparación', inspection: 'Inspección', tire: 'Llantas', battery: 'Batería' };
-const SERVICE_TYPE_ICONS: Record<ServiceType, React.ReactNode> = {
-  oil_change: <Droplets size={20} />, maintenance: <Settings size={20} />, repair: <Wrench size={20} />, inspection: <Gauge size={20} />, tire: <Car size={20} />, battery: <ZapIcon size={20} />
+const CATEGORY_ICONS: Record<CatalogCategory, React.ReactNode> = {
+  all: <Layers size={15} />, parts: <Settings size={15} />, oils: <Droplets size={15} />,
+  filters: <Filter size={15} />, batteries: <Zap size={15} />, tires: <Car size={15} />, services: <Wrench size={15} />
 };
 
-function ZapIcon({ size }: { size: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>; }
+const CAR_MAKERS = [
+  'Abarth', 'Aiways', 'Aixam', 'Alfa Romeo', 'Alpina', 'Alpine', 'Artega', 'Aston Martin', 'Audi', 'Austin',
+  'BAW', 'Bentley', 'Bertone', 'BMW', 'Borgward', 'Bovensiepen', 'Brabus', 'Bugatti', 'Buick', 'BYD',
+  'Cadillac', 'Caterham', 'Chevrolet', 'Chrysler', 'Citroën', 'Cupra', 'Dacia', 'Daewoo', 'Daihatsu', 'Dallara',
+  'De Tomaso', 'Deepal', 'DeLorean', 'Dodge', 'Dongfeng', 'DS', 'Farizon Auto', 'FAW', 'Ferrari', 'Fest',
+  'Fiat', 'Firefly', 'Fisker', 'Ford', 'Foton', 'Geely', 'Genesis', 'Gordon Murray', 'Gumpert', 'GWM Tank',
+  'Hennessey', 'Honda', 'Hummer', 'Hyundai', 'Ineos', 'Infiniti', 'Isuzu', 'Iveco', 'Jaecoo', 'Jaguar',
+  'Jeep', 'KGM', 'Kia', 'Koenigsegg', 'KTM', 'Lada', 'Lamborghini', 'Lancia', 'Land Rover', 'Leapmotor',
+  'Lexus', 'Ligier', 'Lincoln', 'Lotus', 'Lucid', 'Luxgen', 'Lynk & Co', 'MAN', 'Marussia', 'Maserati',
+  'Maxus', 'Maybach', 'Mazda', 'McLaren', 'Mercedes-AMG', 'Mercedes-Benz', 'MG', 'MG Rover', 'Mia Eléctrico', 'Microcar',
+  'Mini', 'Mitsubishi', 'Mitsubishi Fuso', 'Morgan', 'Nio', 'Nissan', 'Omoda', 'Opel', 'Ora', 'Pagani',
+  'Peugeot', 'PGO', 'Piaggio', 'Polaris', 'Polestar', 'Pontiac', 'Porsche', 'Praga', 'Renault', 'Rivian',
+  'Rolls Royce', 'Rover', 'Saab', 'Santana', 'Seat', 'Seres', 'Skoda', 'Skyworth', 'Smart', 'Spyker',
+  'SsangYong', 'SSC', 'Subaru', 'Suzuki', 'Tesla', 'Togg', 'Toyota', 'Trabant', 'TVR', 'VinFast',
+  'Volkswagen', 'Volvo', 'Wiesmann', 'Xiaomi', 'XPeng', 'Zeekr', 'Zenvo'
+];
 
+const VEHICLE_YEARS = Array.from({ length: new Date().getFullYear() - 1979 }, (_, i) => new Date().getFullYear() + 1 - i);
+const SERVICE_TYPE_LABELS: Record<ServiceType, string> = { oil_change: 'Cambio de aceite', maintenance: 'Mantenimiento', repair: 'Reparación', inspection: 'Inspección', tire: 'Llantas', battery: 'Batería' };
 function ProductArtwork({ product }: { product: Product }) {
   return (
     <div className="product-art relative h-56 overflow-hidden product-art-container flex items-center justify-center p-1.5">
       <div className="absolute inset-0 bg-slate-950/80 product-art-grid opacity-30 pointer-events-none" />
-      <img
-        src={product.image}
-        alt={`Imagen referencial de ${product.name}`}
-        loading="lazy"
-        className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-700 rounded-xl relative z-0"
-      />
+      {product.image ? (
+        <img
+          src={product.image}
+          alt={`Imagen referencial de ${product.name}`}
+          loading="lazy"
+          className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-700 rounded-xl relative z-0"
+        />
+      ) : (
+        <Package size={48} className="text-slate-600 relative z-0" />
+      )}
       <div className="absolute inset-0 product-art-shadow-overlay pointer-events-none z-10" />
       <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full bg-slate-900/80 backdrop-blur border border-white/20 text-[9px] font-700 tracking-[0.16em] text-slate-100 shadow-md">
         {product.category === 'service' ? 'SERVICIO' : 'PRODUCTO'}
@@ -395,18 +251,22 @@ function ProductCard({ product }: { product: Product }) {
           <Badge cls={typeBadge}>{typeBadge === 'service' ? 'Servicio' : 'Venta'}</Badge>
         </div>
         <p className="text-xs text-muted leading-relaxed">{product.description}</p>
-        {product.compatibility && <p className="text-[11px] text-blue"><Tag size={11} className="inline mr-1" />{product.compatibility}</p>}
-        <div className="mt-auto pt-3 border-t border-[rgba(139,92,246,0.1)] flex flex-col gap-1">
+        {(product.compatibility || product.compatYearFrom) && (
+          <p className="text-[11px] text-mint">
+            <Tag size={11} className="inline mr-1" />
+            {[product.compatibility, product.compatYearFrom ? (product.compatYearTo && product.compatYearTo !== product.compatYearFrom ? `${product.compatYearFrom}–${product.compatYearTo}` : `${product.compatYearFrom}`) : ''].filter(Boolean).join(' · ')}
+          </p>
+        )}
+        <div className="mt-auto pt-3 border-t border-[rgba(248,90,0,0.1)] flex flex-col gap-1">
           {product.salePrice && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted flex items-center gap-1"><Tag size={11} /> Precio</span>
-              <span className="font-display font-700 text-blue" style={{ fontSize: '17px' }}>{fmtMoney(product.salePrice)}</span>
+              <span className="font-display font-700 text-mint" style={{ fontSize: '17px' }}>{fmtMoney(product.salePrice)}</span>
             </div>
           )}
           {product.type !== 'service' && (
             <div className="flex items-center justify-between mt-1">
               <span className="text-[11px] text-muted">Stock: <span className="text-gtext font-600">{product.stock}</span></span>
-              <button className="text-[12px] font-600 text-blue hover:text-blue-light transition-colors flex items-center gap-0.5">Ver detalle <ChevronRight size={12} /></button>
             </div>
           )}
         </div>
@@ -415,164 +275,240 @@ function ProductCard({ product }: { product: Product }) {
   );
 }
 
-const HERO_SHOWCASE: Record<string, { tag: string; title: string; subtitle: string; image: string; icon: React.ReactNode }> = {
-  all: { tag: 'DESTACADO · TALLER AUTORIZADO', title: 'Servicio Integral Automotriz', subtitle: 'Repuestos, aceites y mantenimiento con garantía', image: 'https://upload.wikimedia.org/wikipedia/commons/a/af/Car_repair_shop.jpg', icon: <Car size={20} /> },
-  parts: { tag: 'DESTACADO · REPUESTOS', title: 'Piezas de Calidad para tu Vehículo', subtitle: 'Pastillas, bujías, filtros y más con garantía', image: 'https://upload.wikimedia.org/wikipedia/commons/1/10/Spark_plugs.jpg', icon: <Settings size={20} /> },
-  oils: { tag: 'DESTACADO · ACEITES', title: 'Lubricantes Sintéticos y Semi-sintéticos', subtitle: 'Protección superior para tu motor', image: 'https://upload.wikimedia.org/wikipedia/commons/5/5a/Castrol_oil_cans.jpg', icon: <Droplets size={20} /> },
-  filters: { tag: 'DESTACADO · FILTROS', title: 'Filtros de Aceite, Aire y Combustible', subtitle: 'Rendimiento óptimo y mayor vida útil', image: 'https://upload.wikimedia.org/wikipedia/commons/c/cb/Engine_oil_filter.JPG', icon: <Filter size={20} /> },
-  batteries: { tag: 'DESTACADO · BATERÍAS', title: 'Baterías de Alto Rendimiento', subtitle: 'Arranque confiable en cualquier clima', image: 'https://upload.wikimedia.org/wikipedia/commons/9/94/Exhausted_battery.JPG', icon: <ZapIcon size={20} /> },
-  tires: { tag: 'DESTACADO · LLANTAS', title: 'Llantas para Todo Terreno', subtitle: 'Seguridad y durabilidad en cada kilómetro', image: 'https://upload.wikimedia.org/wikipedia/commons/2/22/2017-09-28_%28593%29_Michelin_Energy_Saver_195-55_R_16_91_V_tire_at_Bahnhof_Stockerau.jpg', icon: <Car size={20} /> },
-  services: { tag: 'DESTACADO · SERVICIOS', title: 'Mantenimiento y Reparación', subtitle: 'Técnicos certificados y diagnóstico preciso', image: 'https://upload.wikimedia.org/wikipedia/commons/7/75/Woman_mechanic_working_on_engine_%28cropped%29.jpeg', icon: <Wrench size={20} /> },
-};
-
 function CatalogView() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [category, setCategory] = useState<CatalogCategory>('all');
   const [filter, setFilter] = useState<FilterType>('all');
-  const [brand, setBrand] = useState<BrandFilter>('all');
+  const [brand, setBrand] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
-  const [showPriceFilter, setShowPriceFilter] = useState<boolean>(false);
-  const heroData = HERO_SHOWCASE[category] || HERO_SHOWCASE.all;
+  const [vehBrand, setVehBrand] = useState('');
+  const [vehModel, setVehModel] = useState('');
+  const [vehYear, setVehYear] = useState('');
+  const [vehMotor, setVehMotor] = useState('');
+  const [vehicleFilter, setVehicleFilter] = useState<{ brand: string; year?: number; desc: string } | null>(null);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [carModels, setCarModels] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    fetch('/vehicles.json').then(r => r.json()).then(setCarModels).catch(() => {});
+    api.getProducts().then(setProducts).catch(() => {});
+  }, []);
+
+  const availableModels = carModels[vehBrand] ?? [];
+
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: products.length };
+    products.forEach(p => { counts[p.category] = (counts[p.category] ?? 0) + 1; });
+    return counts;
+  }, [products]);
 
   const filtered = useMemo(() => {
-    return PRODUCTS.filter(p => {
+    return products.filter(p => {
       if (category !== 'all' && p.category !== CAT_MAP[category]) return false;
       if (filter === 'sale' && p.type !== 'sale') return false;
       if (filter === 'service' && p.type !== 'service') return false;
       if (brand !== 'all' && p.brand !== brand) return false;
+      if (vehicleFilter) {
+        const brandOk = p.brand === 'Generic' || p.brand === vehicleFilter.brand || (p.compatibility ?? '').toLowerCase().includes(vehicleFilter.brand.toLowerCase());
+        if (!brandOk) return false;
+        if (vehicleFilter.year && (p.compatYearFrom || p.compatYearTo)) {
+          if (p.compatYearFrom && vehicleFilter.year < p.compatYearFrom) return false;
+          if (p.compatYearTo && vehicleFilter.year > p.compatYearTo) return false;
+        }
+      }
       const price = p.salePrice ?? 0;
       if (minPrice !== '' && price < Number(minPrice)) return false;
       if (maxPrice !== '' && price > Number(maxPrice)) return false;
       if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.description.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-  }, [category, filter, brand, search, minPrice, maxPrice]);
+  }, [products, category, filter, brand, search, minPrice, maxPrice, vehicleFilter]);
 
-  const hasActiveFilters = category !== 'all' || filter !== 'all' || brand !== 'all' || search !== '' || minPrice !== '' || maxPrice !== '';
-  const clearFilters = () => { setCategory('all'); setFilter('all'); setBrand('all'); setSearch(''); setMinPrice(''); setMaxPrice(''); };
+  const hasActiveFilters = category !== 'all' || filter !== 'all' || brand !== 'all' || search !== '' || minPrice !== '' || maxPrice !== '' || vehicleFilter !== null;
+  const clearFilters = () => {
+    setCategory('all'); setFilter('all'); setBrand('all'); setSearch(''); setMinPrice(''); setMaxPrice('');
+    setVehBrand(''); setVehModel(''); setVehYear(''); setVehMotor(''); setVehicleFilter(null);
+  };
+
+  const applyVehicle = () => {
+    if (!vehBrand) return;
+    setVehicleFilter({ brand: vehBrand, year: vehYear ? Number(vehYear) : undefined, desc: [vehBrand, vehModel, vehYear, vehMotor].filter(Boolean).join(' · ') });
+  };
+
+  const selectClass = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white transition-shadow disabled:opacity-50 disabled:cursor-not-allowed';
+  const filterLabel = 'block text-[11px] font-700 uppercase tracking-[0.12em] text-muted mb-2.5';
 
   return (
     <div className="min-h-screen bg-bg transition-colors duration-200">
-      <div className="relative overflow-hidden bg-blue-50/80 dark:bg-slate-900 border-b border-blue-100 dark:border-slate-800 hero-banner">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 85% 20%, rgba(99,102,241,0.12), transparent 45%), radial-gradient(circle at 15% 85%, rgba(37,99,235,0.10), transparent 45%)' }} />
-        <div className="relative max-w-7xl mx-auto px-6 py-10 md:py-14">
-          <div className="grid lg:grid-cols-[0.9fr_1.1fr] items-center gap-10 lg:gap-14">
-            <div className="max-w-xl">
-              <div className="flex items-center gap-2 mb-5">
-                <span className="badge badge-sale">Taller Autorizado</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Servicio garantizado</span>
-              </div>
-              <h1 className="font-display font-700 text-4xl md:text-5xl lg:text-[56px] text-slate-900 dark:text-white leading-[1.04] mb-5 tracking-[-0.035em]">
-                Cuidamos tu auto como <span className="text-[#5488D6]">mereces.</span>
-              </h1>
-              <p className="text-slate-600 dark:text-slate-300 text-base md:text-lg leading-relaxed max-w-lg">
-                Repuestos originales, aceites de calidad y servicios de mantenimiento con diagnóstico profesional y garantía real.
-              </p>
-              <div className="flex flex-wrap items-center gap-3 mt-7">
-                <button onClick={() => setCategory(category === 'services' ? 'all' : 'services')} className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${category === 'services' || category === 'all' ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'}`}>
-                  <Wrench size={16} /> Ver servicios
-                </button>
-                <button onClick={() => setCategory(category === 'oils' ? 'all' : 'oils')} className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${category === 'oils' ? 'bg-[#5488D6] hover:bg-[#4677c4] text-white shadow-lg shadow-[#5488D6]/30 scale-[1.02]' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-[#5488D6]'}`}>
-                  <Droplets size={16} /> Aceites
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-4 mt-9 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">{PRODUCTS.length}+</strong><span className="text-xs text-slate-500 dark:text-slate-400">Productos</span></div>
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">12 meses</strong><span className="text-xs text-slate-500 dark:text-slate-400">Garantía</span></div>
-                <div><strong className="block font-display text-xl text-slate-900 dark:text-white">Soporte</strong><span className="text-xs text-slate-500 dark:text-slate-400">Especializado</span></div>
-              </div>
+      <div className="relative overflow-hidden bg-[#0d171d]">
+        <img src="/hero-car.jpg" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover object-[68%_center] hidden motion-reduce:block" />
+        <video
+          className="absolute inset-0 w-full h-full object-cover object-[68%_center] motion-reduce:hidden"
+          autoPlay
+          loop
+          muted
+          playsInline
+          poster="/hero-car.jpg"
+          aria-hidden="true"
+        >
+          <source src="/hero-car.webm" type="video/webm" />
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/55 to-slate-950/15 pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-bg to-transparent pointer-events-none" />
+        <div className="relative w-[90%] mx-auto px-6 py-14 md:py-20 lg:py-24">
+          <div className="max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="badge badge-sale">Servicio garantizado</span>
             </div>
-            <div className="relative lg:min-h-[430px]">
-              <div key={category} className="hero-animate hero-photo relative h-[340px] sm:h-[420px] overflow-hidden rounded-[28px] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
-                <img src={heroData.image} alt={heroData.title} className="w-full h-full object-cover transition-transform duration-700 hover:scale-105" />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
-                <div className="absolute left-6 bottom-6 text-white max-w-md">
-                  <span className="text-[10px] font-700 tracking-[0.18em] text-white bg-[#5488D6] border border-[#5488D6]/60 px-2.5 py-1 rounded-full inline-block mb-2 shadow-sm">{heroData.tag}</span>
-                  <div className="font-display text-2xl md:text-3xl font-700 leading-tight text-white">{heroData.title}</div>
-                  <div className="text-sm text-white/80 mt-1">{heroData.subtitle}</div>
-                </div>
-              </div>
-              <div className="absolute -left-4 sm:-left-7 top-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 p-3 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue dark:text-blue-400 flex items-center justify-center">{heroData.icon}</div>
-                <div><div className="text-xs text-slate-500 dark:text-slate-400">Disponible</div><div className="text-sm font-600 text-slate-900 dark:text-white">Venta y servicio</div></div>
-              </div>
-              <div className="absolute -right-2 sm:-right-5 bottom-8 bg-white/95 dark:bg-slate-800/95 backdrop-blur rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/10 px-4 py-3">
-                <div className="flex items-center gap-1 text-amber-500 mb-1"><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /></div>
-                <div className="text-xs font-600 text-slate-900 dark:text-white">Servicio certificado</div>
-              </div>
+            <h1 className="font-display font-700 text-4xl md:text-5xl lg:text-[56px] text-white leading-[1.04] mb-5 tracking-[-0.035em] [text-shadow:0_2px_18px_rgba(0,0,0,0.45)]">
+              Cuidamos tu auto como <span className="text-mint-light">mereces.</span>
+            </h1>
+            <p className="text-slate-300 text-base md:text-lg leading-relaxed max-w-lg">
+              Repuestos originales, aceites de calidad y servicios de mantenimiento con diagnóstico profesional y garantía real.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mt-7">
+              <button onClick={() => setCategory(category === 'services' ? 'all' : 'services')} className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${category === 'services' || category === 'all' ? 'bg-purple hover:bg-purple-dark text-white shadow-lg shadow-purple/40 scale-[1.02]' : 'bg-white/10 backdrop-blur border border-white/25 text-white hover:bg-white/20 hover:border-white/40'}`}>
+                <Wrench size={16} /> Ver servicios
+              </button>
+              <button onClick={() => setCategory(category === 'oils' ? 'all' : 'oils')} className={`px-5 py-3 rounded-xl text-sm font-600 transition-all duration-300 flex items-center gap-2 ${category === 'oils' ? 'bg-purple hover:bg-purple-dark text-white shadow-lg shadow-purple/40 scale-[1.02]' : 'bg-white/10 backdrop-blur border border-white/25 text-white hover:bg-white/20 hover:border-white/40'}`}>
+                <Droplets size={16} /> Aceites
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="sticky top-[64px] z-30 border-b border-slate-200 dark:border-slate-800 sticky-filter-bar backdrop-blur-md bg-white/90 dark:bg-slate-900/90">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col gap-3 py-3">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
-              <div className="flex items-center gap-1 flex-wrap">
-                {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
-                  <button key={cat} onClick={() => setCategory(cat)} className={`px-3 py-1.5 rounded-lg text-sm font-500 transition-all ${category === cat ? 'bg-[#5488D6] text-white shadow-sm shadow-[#5488D6]/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                    {CATEGORY_LABELS[cat]}
-                  </button>
-                ))}
+      <div className="w-[90%] mx-auto px-6 py-8">
+        <button onClick={() => setMobileFiltersOpen(o => !o)} className="lg:hidden w-full mb-5 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-card text-sm font-600 text-gtext shadow-sm">
+          <SlidersHorizontal size={15} className="text-purple-light" /> Filtros y búsqueda {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-purple" />}
+        </button>
+
+        <div className="grid lg:grid-cols-[272px_minmax(0,1fr)] gap-8 items-start">
+          <aside className={`space-y-5 lg:sticky lg:top-20 ${mobileFiltersOpen ? 'block' : 'hidden lg:block'}`}>
+            <div className="glow-card rounded-2xl bg-card overflow-hidden">
+              <div className="h-1 bg-gradient-to-r from-purple to-accent" />
+              <div className="p-5">
+                <h3 className="font-display font-600 text-gtext flex items-center gap-2"><Car size={16} className="text-mint" /> Buscar por vehículo</h3>
+                <p className="text-[11px] text-muted mt-1 mb-4">Encuentra repuestos y servicios compatibles</p>
+                <div className="space-y-3">
+                  <div>
+                    <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Fabricante<span className="text-danger">*</span></span>
+                    <select value={vehBrand} onChange={e => { setVehBrand(e.target.value); setVehModel(''); setVehYear(''); setVehMotor(''); }} className={selectClass}>
+                      <option value="">Seleccionar</option>
+                      {CAR_MAKERS.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Modelo</span>
+                    {availableModels.length > 0 ? (
+                      <select value={vehModel} onChange={e => { setVehModel(e.target.value); setVehYear(''); setVehMotor(''); }} disabled={!vehBrand} className={selectClass}>
+                        <option value="">Seleccionar</option>
+                        {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    ) : (
+                      <input value={vehModel} onChange={e => { setVehModel(e.target.value); setVehYear(''); setVehMotor(''); }} disabled={!vehBrand} placeholder="Ej. Corolla" className={selectClass} />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Año</span>
+                      <select value={vehYear} onChange={e => setVehYear(e.target.value)} disabled={!vehModel} className={selectClass}>
+                        <option value="">Todos</option>
+                        {VEHICLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Motor</span>
+                      <input value={vehMotor} onChange={e => setVehMotor(e.target.value)} disabled={!vehYear} placeholder="Ej. 1.8L" className={selectClass} />
+                    </div>
+                  </div>
+                </div>
+                <button onClick={applyVehicle} disabled={!vehBrand} className="w-full mt-4 py-2.5 rounded-xl text-sm font-600 text-white bg-purple hover:bg-purple-dark transition-colors shadow-md shadow-purple/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  Buscar <ChevronRight size={14} />
+                </button>
+                {vehicleFilter && (
+                  <div className="mt-3 flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-purple/10 border border-purple/25 text-xs">
+                    <span className="font-600 text-purple-light truncate flex items-center gap-1.5"><Car size={12} />{vehicleFilter.desc}</span>
+                    <button onClick={() => setVehicleFilter(null)} className="text-muted hover:text-danger transition-colors flex-shrink-0"><X size={13} /></button>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  {(['all', 'Toyota', 'Ford', 'Chevrolet', 'Generic'] as BrandFilter[]).map(b => (
-                    <button key={b} onClick={() => setBrand(b)} className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${brand === b ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
-                      {b === 'all' ? 'Marcas' : b === 'Generic' ? 'Genérico' : b}
+            </div>
+
+            <div className="glow-card rounded-2xl bg-card p-5 space-y-6">
+              <SearchBar value={search} onChange={setSearch} placeholder="Buscar producto..." />
+
+              <div>
+                <span className={filterLabel}>Categorías</span>
+                <div className="space-y-1">
+                  {(Object.keys(CATEGORY_LABELS) as CatalogCategory[]).map(cat => (
+                    <button key={cat} onClick={() => setCategory(cat)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all ${category === cat ? 'bg-purple text-white shadow-sm shadow-purple/30 font-600' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                      <span className={category === cat ? 'text-white/80' : 'text-mint'}>{CATEGORY_ICONS[cat]}</span>
+                      <span className="flex-1 text-left">{CATEGORY_LABELS[cat]}</span>
+                      <span className={`text-[10px] font-700 px-1.5 py-0.5 rounded-full ${category === cat ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-muted'}`}>{cat === 'all' ? products.length : (catCounts[CAT_MAP[cat]] ?? 0)}</span>
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-[#5488D6]/10 dark:bg-[#5488D6]/15 border border-[#5488D6]/25 dark:border-[#5488D6]/30">
+              </div>
+
+              <div>
+                <span className={filterLabel}>Tipo</span>
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                   {(['all', 'sale', 'service'] as FilterType[]).map(f => (
-                    <button key={f} onClick={() => setFilter(f)} className={`px-2.5 py-1 rounded-md text-xs font-500 transition-all ${filter === f ? 'bg-[#5488D6] text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <button key={f} onClick={() => setFilter(f)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-500 transition-all ${filter === f ? 'bg-purple text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
                       {f === 'all' ? 'Todos' : f === 'sale' ? 'Venta' : 'Servicio'}
                     </button>
                   ))}
                 </div>
-                <button onClick={() => setShowPriceFilter(!showPriceFilter)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-600 transition-colors ${showPriceFilter || minPrice || maxPrice ? 'bg-blue/10 border-blue text-blue dark:text-indigo-400' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}>
-                  <SlidersHorizontal size={14} /> Precios
-                </button>
-                <div className="w-full sm:w-64"><SearchBar value={search} onChange={setSearch} placeholder="Buscar producto o servicio..." /></div>
               </div>
-            </div>
-            {showPriceFilter && (
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-4 text-xs animate-in fade-in duration-200">
-                <span className="font-600 text-slate-800 dark:text-slate-200 flex items-center gap-1"><Tag size={13} className="text-blue dark:text-indigo-400" /> Rango de Precio ($):</span>
-                <div className="flex items-center gap-2">
-                  <input type="number" placeholder="Mín $" value={minPrice} onChange={e => setMinPrice(e.target.value)} className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
-                  <span className="text-slate-500">-</span>
-                  <input type="number" placeholder="Máx $" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
+
+              <div>
+                <span className={filterLabel}>Marca del repuesto</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {['all', ...Array.from(new Set(products.map(p => p.brand))).sort((a, b) => a === 'Generic' ? -1 : b === 'Generic' ? 1 : a.localeCompare(b))].map(b => (
+                    <button key={b} onClick={() => setBrand(b)} className={`px-2.5 py-1.5 rounded-lg text-xs font-500 transition-all border ${brand === b ? 'bg-purple text-white border-purple shadow-sm' : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-purple/50'}`}>
+                      {b === 'all' ? 'Todas' : b === 'Generic' ? 'Genérico' : b}
+                    </button>
+                  ))}
                 </div>
-                {hasActiveFilters && (
-                  <button onClick={clearFilters} className="ml-auto text-xs font-600 text-red-600 dark:text-red-400 hover:underline flex items-center gap-1"><RotateCcw size={12} /> Limpiar filtros</button>
-                )}
+              </div>
+
+              <div>
+                <span className={filterLabel}>Rango de precio ($)</span>
+                <div className="flex items-center gap-2">
+                  <input type="number" placeholder="Mín" value={minPrice} onChange={e => setMinPrice(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white" />
+                  <span className="text-slate-400">–</span>
+                  <input type="number" placeholder="Máx" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white" />
+                </div>
+              </div>
+
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="w-full py-2.5 rounded-xl border border-red-200 dark:border-red-900/50 text-xs font-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors flex items-center justify-center gap-1.5">
+                  <RotateCcw size={12} /> Limpiar todos los filtros
+                </button>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            <div className="flex items-center justify-between mb-5">
+              <p className="text-sm text-muted">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}{vehicleFilter ? ` para ${vehicleFilter.desc}` : ''}</p>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="text-center py-24 text-muted">
+                <Settings size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="text-lg">No se encontraron productos</p>
+                <p className="text-sm mt-1">Intenta ajustando los filtros o la búsqueda</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filtered.map(p => <ProductCard key={p.id} product={p} />)}
               </div>
             )}
           </div>
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-5">
-          <p className="text-sm text-muted">{filtered.length} producto{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</p>
-          {hasActiveFilters && !showPriceFilter && (
-            <button onClick={clearFilters} className="text-xs text-red-600 font-600 hover:underline flex items-center gap-1"><RotateCcw size={12} /> Limpiar filtros</button>
-          )}
-        </div>
-        {filtered.length === 0 ? (
-          <div className="text-center py-24 text-muted">
-            <Settings size={48} className="mx-auto mb-4 opacity-20" />
-            <p className="text-lg">No se encontraron productos</p>
-            <p className="text-sm mt-1">Intenta ajustando los filtros de precio o búsqueda</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-            {filtered.map(p => <ProductCard key={p.id} product={p} />)}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -580,11 +516,11 @@ function CatalogView() {
 
 // ─── Admin: Dashboard ─────────────────────────────────────────────────────────
 
-function Dashboard({ inventory, serviceOrders }: { inventory: Product[]; serviceOrders: ServiceOrder[] }) {
+function Dashboard({ inventory, serviceOrders, clients, sales }: { inventory: Product[]; serviceOrders: ServiceOrder[]; clients: Client[]; sales: Sale[] }) {
   const stats = [
-    { label: 'Clientes Registrados', value: CLIENTS.length, sub: `${CLIENTS.filter(c => c.status === 'active').length} activos`, icon: <Users size={20} />, color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+    { label: 'Clientes Registrados', value: clients.length, sub: `${clients.filter(c => c.status === 'active').length} activos`, icon: <Users size={20} />, color: '#F85A00', bg: 'rgba(248,90,0,0.12)' },
     { label: 'Órdenes Activas', value: serviceOrders.filter(r => r.status !== 'completed' && r.status !== 'cancelled').length, sub: `${serviceOrders.filter(r => r.status === 'ready').length} listas`, icon: <Wrench size={20} />, color: '#38bdf8', bg: 'rgba(56,189,248,0.12)' },
-    { label: 'Ingresos del Mes', value: fmtMoney(SALES.reduce((s, x) => s + x.total, 0)), sub: `${SALES.length} ventas`, icon: <DollarSign size={20} />, color: '#10b981', bg: 'rgba(16,185,129,0.12)', isText: true },
+    { label: 'Ingresos del Mes', value: fmtMoney(sales.reduce((s, x) => s + x.total, 0)), sub: `${sales.length} ventas`, icon: <DollarSign size={20} />, color: '#10b981', bg: 'rgba(16,185,129,0.12)', isText: true },
     { label: 'Stock Crítico', value: inventory.filter(p => p.type !== 'service' && p.stock <= 5).length, sub: 'productos bajos', icon: <AlertTriangle size={20} />, color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
   ];
 
@@ -606,26 +542,26 @@ function Dashboard({ inventory, serviceOrders }: { inventory: Product[]; service
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card rounded-xl p-5" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+        <div className="bg-card rounded-xl p-5" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
           <h3 className="font-display font-600 text-gtext mb-4 flex items-center gap-2"><Wrench size={16} className="text-purple" /> Órdenes de Servicio Recientes</h3>
           <div className="space-y-3">
             {serviceOrders.slice(0, 4).map(o => (
-              <div key={o.id} className="flex items-center gap-3 py-2 border-b border-[rgba(139,92,246,0.07)] last:border-0">
+              <div key={o.id} className="flex items-center gap-3 py-2 border-b border-[rgba(248,90,0,0.07)] last:border-0">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-500 text-gtext truncate">{o.vehicleDesc}</p>
                   <p className="text-xs text-muted truncate">{o.clientName} · {SERVICE_TYPE_LABELS[o.serviceType]}</p>
                 </div>
                 <Badge cls={o.status}>{o.status === 'pending' ? 'Pendiente' : o.status === 'in_progress' ? 'En taller' : o.status === 'ready' ? 'Listo' : 'Completada'}</Badge>
-                <span className="text-sm font-600 text-blue">{fmtMoney(o.total)}</span>
+                <span className="text-sm font-600 text-mint">{fmtMoney(o.total)}</span>
               </div>
             ))}
           </div>
         </div>
-        <div className="bg-card rounded-xl p-5" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+        <div className="bg-card rounded-xl p-5" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
           <h3 className="font-display font-600 text-gtext mb-4 flex items-center gap-2"><ShoppingBag size={16} className="text-warning" /> Ventas Recientes</h3>
           <div className="space-y-3">
-            {SALES.slice(0, 4).map(s => (
-              <div key={s.id} className="flex items-center gap-3 py-2 border-b border-[rgba(139,92,246,0.07)] last:border-0">
+            {sales.slice(0, 4).map(s => (
+              <div key={s.id} className="flex items-center gap-3 py-2 border-b border-[rgba(248,90,0,0.07)] last:border-0">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-500 text-gtext truncate">{s.clientName}</p>
                   <p className="text-xs text-muted truncate">{s.products.length} artículo(s)</p>
@@ -672,7 +608,7 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
   const filtered = clients.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.idDoc.includes(search));
 
   const closeModal = () => { setModalOpen(false); setForm(emptyForm); setErrors({}); };
-  const saveClient = (e: React.FormEvent) => {
+  const saveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextErrors: Record<string, string> = {};
     if (form.name.trim().length < 3) nextErrors.name = 'Ingresa el nombre completo';
@@ -683,8 +619,13 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
     if (clients.some(c => c.idDoc.toLowerCase() === form.idDoc.trim().toLowerCase())) nextErrors.idDoc = 'Este documento ya está registrado';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    setClients(current => [{ id: `c${Date.now()}`, name: form.name.trim(), idDoc: form.idDoc.trim().toUpperCase(), phone: form.phone.trim(), email: form.email.trim().toLowerCase(), address: form.address.trim(), status: form.status, joinDate: new Date().toISOString().slice(0, 10) }, ...current]);
-    closeModal();
+    try {
+      const created = await api.createClient({ name: form.name.trim(), idDoc: form.idDoc.trim().toUpperCase(), phone: form.phone.trim(), email: form.email.trim().toLowerCase(), address: form.address.trim(), status: form.status, joinDate: new Date().toISOString().slice(0, 10) });
+      setClients(current => [created, ...current]);
+      closeModal();
+    } catch (err) {
+      setErrors({ name: err instanceof Error ? err.message : 'No se pudo guardar el cliente' });
+    }
   };
   const fieldClass = (field: string) => `w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-shadow ${errors[field] ? 'border-red-300 dark:border-red-500/50' : 'border-slate-200 dark:border-slate-700'}`;
 
@@ -692,14 +633,14 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
     <div>
       <SectionHeader title="Clientes" subtitle={`${clients.length} clientes registrados`} action={<AddBtn label="Nuevo Cliente" onClick={() => setModalOpen(true)} />} />
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por nombre o documento..." /></div>
-      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead><tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>{['Cliente', 'Documento', 'Teléfono', 'Email', 'Dirección', 'Desde', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: 'rgba(248,90,0,0.08)', borderBottom: '1px solid rgba(248,90,0,0.12)' }}>{['Cliente', 'Documento', 'Teléfono', 'Email', 'Dirección', 'Desde', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
-                  <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-700 text-white flex-shrink-0" style={{ background: '#6153d6' }}>{c.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div><span className="font-500 text-gtext whitespace-nowrap">{c.name}</span></div></td>
+                <tr key={c.id} className="table-row-hover border-b border-[rgba(248,90,0,0.06)] last:border-0">
+                  <td className="px-4 py-3"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-700 text-white flex-shrink-0" style={{ background: 'var(--c-primary)' }}>{c.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div><span className="font-500 text-gtext whitespace-nowrap">{c.name}</span></div></td>
                   <td className="px-4 py-3 text-muted font-mono text-xs">{c.idDoc}</td>
                   <td className="px-4 py-3"><span className="flex items-center gap-1 text-gtext whitespace-nowrap"><Phone size={11} className="text-muted" />{c.phone}</span></td>
                   <td className="px-4 py-3"><span className="flex items-center gap-1 text-muted whitespace-nowrap"><Mail size={11} />{c.email}</span></td>
@@ -716,9 +657,9 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button aria-label="Cerrar modal" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
             <div className="flex items-start justify-between px-6 sm:px-8 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-[#f1efff] dark:bg-indigo-950/60 text-[#6153d6] dark:text-indigo-400 flex items-center justify-center"><Users size={22} /></div><div><div className="text-[11px] font-700 tracking-[0.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Gestión de clientes</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nuevo cliente</h3></div></div>
+              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-purple-soft text-purple-light flex items-center justify-center"><Users size={22} /></div><div><div className="text-[11px] font-700 tracking-[0.14em] text-purple-light uppercase">Gestión de clientes</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nuevo cliente</h3></div></div>
               <button onClick={closeModal} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
             <form onSubmit={saveClient} className="px-6 sm:px-8 py-6">
@@ -734,7 +675,7 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
                 <p className="text-xs text-slate-500 dark:text-slate-400">El cliente se añadirá temporalmente a esta sesión.</p>
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={closeModal} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
-                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar cliente</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Guardar cliente</button>
                 </div>
               </div>
             </form>
@@ -756,7 +697,7 @@ function VehiclesSection({ clients, vehicles, setVehicles }: { clients: Client[]
   const filtered = vehicles.filter(v => !search || v.plate.toLowerCase().includes(search.toLowerCase()) || v.brand.toLowerCase().includes(search.toLowerCase()) || v.model.toLowerCase().includes(search.toLowerCase()));
 
   const closeModal = () => { setModalOpen(false); setForm(emptyForm); setErrors({}); };
-  const saveVehicle = (e: React.FormEvent) => {
+  const saveVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextErrors: Record<string, string> = {};
     if (!form.clientId) nextErrors.clientId = 'Selecciona un cliente';
@@ -767,8 +708,13 @@ function VehiclesSection({ clients, vehicles, setVehicles }: { clients: Client[]
     if (vehicles.some(v => v.plate.toLowerCase() === form.plate.trim().toLowerCase())) nextErrors.plate = 'Esta placa ya está registrada';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    setVehicles(current => [{ id: `v${Date.now()}`, clientId: form.clientId, plate: form.plate.trim().toUpperCase(), brand: form.brand.trim(), model: form.model.trim(), year: Number(form.year), vin: form.vin.trim(), motor: form.motor.trim() }, ...current]);
-    closeModal();
+    try {
+      const created = await api.createVehicle({ clientId: form.clientId, plate: form.plate.trim().toUpperCase(), brand: form.brand.trim(), model: form.model.trim(), year: Number(form.year), vin: form.vin.trim(), motor: form.motor.trim() });
+      setVehicles(current => [created, ...current]);
+      closeModal();
+    } catch (err) {
+      setErrors({ plate: err instanceof Error ? err.message : 'No se pudo guardar el vehículo' });
+    }
   };
   const fieldClass = (field: string) => `w-full px-3.5 py-2.5 rounded-xl border bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-shadow ${errors[field] ? 'border-red-300 dark:border-red-500/50' : 'border-slate-200 dark:border-slate-700'}`;
 
@@ -776,13 +722,13 @@ function VehiclesSection({ clients, vehicles, setVehicles }: { clients: Client[]
     <div>
       <SectionHeader title="Vehículos" subtitle={`${vehicles.length} vehículos registrados`} action={<AddBtn label="Nuevo Vehículo" onClick={() => setModalOpen(true)} />} />
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por placa, marca o modelo..." /></div>
-      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead><tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>{['Placa', 'Marca', 'Modelo', 'Año', 'VIN / Serial', 'Motor', 'Cliente'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: 'rgba(248,90,0,0.08)', borderBottom: '1px solid rgba(248,90,0,0.12)' }}>{['Placa', 'Marca', 'Modelo', 'Año', 'VIN / Serial', 'Motor', 'Cliente'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map(v => (
-                <tr key={v.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
+                <tr key={v.id} className="table-row-hover border-b border-[rgba(248,90,0,0.06)] last:border-0">
                   <td className="px-4 py-3 font-600 text-gtext whitespace-nowrap"><span className="flex items-center gap-1"><Car size={14} className="text-muted" />{v.plate}</span></td>
                   <td className="px-4 py-3 text-gtext whitespace-nowrap">{v.brand}</td>
                   <td className="px-4 py-3 text-muted">{v.model}</td>
@@ -800,9 +746,9 @@ function VehiclesSection({ clients, vehicles, setVehicles }: { clients: Client[]
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button aria-label="Cerrar modal" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
             <div className="flex items-start justify-between px-6 sm:px-8 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-[#f1efff] dark:bg-indigo-950/60 text-[#6153d6] dark:text-indigo-400 flex items-center justify-center"><Car size={22} /></div><div><div className="text-[11px] font-700 tracking-[0.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Gestión de flota</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar vehículo</h3></div></div>
+              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-purple-soft text-purple-light flex items-center justify-center"><Car size={22} /></div><div><div className="text-[11px] font-700 tracking-[0.14em] text-purple-light uppercase">Gestión de flota</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar vehículo</h3></div></div>
               <button onClick={closeModal} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
             <form onSubmit={saveVehicle} className="px-6 sm:px-8 py-6">
@@ -819,7 +765,7 @@ function VehiclesSection({ clients, vehicles, setVehicles }: { clients: Client[]
                 <p className="text-xs text-slate-500 dark:text-slate-400">El vehículo quedará asociado al cliente seleccionado.</p>
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={closeModal} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button>
-                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar vehículo</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Guardar vehículo</button>
                 </div>
               </div>
             </form>
@@ -864,18 +810,28 @@ function ServiceOrdersSection({ serviceOrders, setServiceOrders, inventory, setI
     setForm(current => ({ ...current, quantities: { ...current.quantities, [id]: Math.max(1, Math.min(max, qty)) } }));
   };
 
-  const saveOrder = (e: React.FormEvent) => {
+  const saveOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.clientId || !form.vehicleId || !form.technician) { setErrors('Selecciona cliente, vehículo y técnico responsable.'); return; }
     const productsUsed = selectedProducts.map(p => ({ productId: p.id, name: p.name, qty: form.quantities[p.id] || 1, price: p.salePrice || 0 }));
-    setServiceOrders(current => [{ id: `so${Date.now()}`, clientId: form.clientId, clientName: selectedClient?.name || '', vehicleId: form.vehicleId, vehicleDesc: `${selectedVehicle?.brand} ${selectedVehicle?.model} ${selectedVehicle?.plate}`, serviceType: form.serviceType, productsUsed, laborCost: Number(form.laborCost || 0), total, date: form.date, dueDate: form.dueDate, status: form.status, notes: form.notes.trim(), technician: form.technician }, ...current]);
-    setInventory(current => current.map(p => {
-      const used = productsUsed.find(u => u.productId === p.id);
-      return used ? { ...p, stock: p.stock - used.qty } : p;
-    }));
-    setForm({ clientId: '', vehicleId: '', serviceType: 'oil_change', productIds: [], quantities: {}, laborCost: 0, date: today, dueDate: today, notes: '', technician: '', status: 'pending' });
-    setErrors('');
-    setModalOpen(false);
+    try {
+      const created = await api.createServiceOrder({
+        clientId: form.clientId, clientName: selectedClient?.name || '', vehicleId: form.vehicleId,
+        vehicleDesc: `${selectedVehicle?.brand} ${selectedVehicle?.model} ${selectedVehicle?.plate}`,
+        serviceType: form.serviceType, productsUsed, laborCost: Number(form.laborCost || 0), total,
+        date: form.date, dueDate: form.dueDate, status: form.status, notes: form.notes.trim(), technician: form.technician,
+      });
+      setServiceOrders(current => [created, ...current]);
+      setInventory(current => current.map(p => {
+        const used = productsUsed.find(u => u.productId === p.id);
+        return used ? { ...p, stock: p.stock - used.qty } : p;
+      }));
+      setForm({ clientId: '', vehicleId: '', serviceType: 'oil_change', productIds: [], quantities: {}, laborCost: 0, date: today, dueDate: today, notes: '', technician: '', status: 'pending' });
+      setErrors('');
+      setModalOpen(false);
+    } catch (err) {
+      setErrors(err instanceof Error ? err.message : 'No se pudo crear la orden');
+    }
   };
 
   const filtered = serviceOrders.filter(o => {
@@ -898,20 +854,20 @@ function ServiceOrdersSection({ serviceOrders, setServiceOrders, inventory, setI
           <option value="cancelled">Cancelada</option>
         </select>
       </div>
-      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead><tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>{['ID', 'Cliente', 'Vehículo', 'Servicio', 'Ingreso', 'Entrega', 'Total', 'Estado', 'Técnico'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: 'rgba(248,90,0,0.08)', borderBottom: '1px solid rgba(248,90,0,0.12)' }}>{['ID', 'Cliente', 'Vehículo', 'Servicio', 'Ingreso', 'Entrega', 'Total', 'Estado', 'Técnico'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map(o => (
-                <tr key={o.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
+                <tr key={o.id} className="table-row-hover border-b border-[rgba(248,90,0,0.06)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-muted">{o.id}</td>
                   <td className="px-4 py-3 font-500 text-gtext whitespace-nowrap">{o.clientName}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{o.vehicleDesc}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{SERVICE_TYPE_LABELS[o.serviceType]}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(o.date)}</td>
                   <td className="px-4 py-3 whitespace-nowrap"><span className={o.status === 'pending' && new Date(o.dueDate) < new Date() ? 'text-danger' : 'text-muted'}>{fmtDate(o.dueDate)}</span></td>
-                  <td className="px-4 py-3 font-600 text-blue">{fmtMoney(o.total)}</td>
+                  <td className="px-4 py-3 font-600 text-mint">{fmtMoney(o.total)}</td>
                   <td className="px-4 py-3"><Badge cls={o.status}>{o.status === 'pending' ? 'Pendiente' : o.status === 'in_progress' ? 'En taller' : o.status === 'ready' ? 'Listo' : o.status === 'completed' ? 'Completada' : 'Cancelada'}</Badge></td>
                   <td className="px-4 py-3 text-gtext whitespace-nowrap">{o.technician}</td>
                 </tr>
@@ -925,9 +881,9 @@ function ServiceOrdersSection({ serviceOrders, setServiceOrders, inventory, setI
         <div className="fixed inset-0 z-[80] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
           <button aria-label="Cerrar" className="fixed inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-5xl my-8 max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
             <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex gap-4"><div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue dark:text-blue-400 flex items-center justify-center"><Wrench size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-blue dark:text-blue-400 uppercase">Taller</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar orden de servicio</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Asigna vehículo, repuestos/aceite y mano de obra.</p></div></div>
+              <div className="flex gap-4"><div className="w-12 h-12 rounded-2xl bg-purple-soft text-mint flex items-center justify-center"><Wrench size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-mint uppercase">Taller</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar orden de servicio</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Asigna vehículo, repuestos/aceite y mano de obra.</p></div></div>
               <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
             <form onSubmit={saveOrder} className="p-7">
@@ -972,7 +928,7 @@ function ServiceOrdersSection({ serviceOrders, setServiceOrders, inventory, setI
                 </div>
               </div>
               {errors && <div className="mt-5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{errors}</div>}
-              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Crear orden de servicio</button></div>
+              <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Crear orden de servicio</button></div>
             </form>
           </div>
         </div>
@@ -983,12 +939,11 @@ function ServiceOrdersSection({ serviceOrders, setServiceOrders, inventory, setI
 
 // ─── Admin: Sales ─────────────────────────────────────────────────────────────
 
-function SalesSection({ inventory, setInventory }: { inventory: Product[]; setInventory: React.Dispatch<React.SetStateAction<Product[]>> }) {
+function SalesSection({ sales, setSales, inventory, setInventory, clients }: { sales: Sale[]; setSales: React.Dispatch<React.SetStateAction<Sale[]>>; inventory: Product[]; setInventory: React.Dispatch<React.SetStateAction<Product[]>>; clients: Client[] }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [sales, setSales] = useState<Sale[]>(SALES);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [clientName, setClientName] = useState('');
+  const [clientId, setClientId] = useState('');
   const [cart, setCart] = useState<Record<string, number>>({});
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -1000,13 +955,22 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
   const filtered = sales.filter(s => !search || s.clientName.toLowerCase().includes(search.toLowerCase()));
   const totalRevenue = filtered.reduce((sum, s) => sum + s.total, 0);
   const setQuantity = (product: Product, quantity: number) => setCart(current => ({ ...current, [product.id]: Math.max(0, Math.min(product.stock, quantity)) }));
-  const saveSale = (e: React.FormEvent) => {
+  const saveSale = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName || !cartItems.length) { setError('Selecciona un cliente y agrega al menos un producto.'); return; }
+    const client = clients.find(c => c.id === clientId);
+    if (!client || !cartItems.length) { setError('Selecciona un cliente y agrega al menos un producto.'); return; }
     if (discount > subtotal) { setError('El descuento no puede superar el subtotal.'); return; }
-    setSales(current => [{ id: `s${Date.now()}`, clientName, products: cartItems.map(({ product, qty }) => `${product.name}${qty > 1 ? ` x${qty}` : ''}`), date: today, subtotal, discount: Number(discount), total, paymentMethod }, ...current]);
-    setInventory(current => current.map(p => cart[p.id] ? { ...p, stock: p.stock - cart[p.id] } : p));
-    setClientName(''); setCart({}); setDiscount(0); setPaymentMethod('cash'); setError(''); setModalOpen(false);
+    try {
+      const created = await api.createSale({
+        clientId, clientName: client.name, date: today, subtotal, discount: Number(discount), total,
+        paymentMethod, items: cartItems.map(({ product, qty }) => ({ productId: product.id, name: product.name, qty, price: product.salePrice ?? 0 })),
+      });
+      setSales(current => [created, ...current]);
+      setInventory(current => current.map(p => cart[p.id] ? { ...p, stock: p.stock - cart[p.id] } : p));
+      setClientId(''); setCart({}); setDiscount(0); setPaymentMethod('cash'); setError(''); setModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar la venta');
+    }
   };
 
   return (
@@ -1022,20 +986,20 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
         ))}
       </div>
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por cliente..." /></div>
-      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead><tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>{['ID', 'Cliente', 'Productos', 'Fecha', 'Subtotal', 'Descuento', 'Total', 'Método'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: 'rgba(248,90,0,0.08)', borderBottom: '1px solid rgba(248,90,0,0.12)' }}>{['ID', 'Cliente', 'Productos', 'Fecha', 'Subtotal', 'Descuento', 'Total', 'Método'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map(s => (
-                <tr key={s.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
+                <tr key={s.id} className="table-row-hover border-b border-[rgba(248,90,0,0.06)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-muted">{s.id}</td>
                   <td className="px-4 py-3 font-500 text-gtext whitespace-nowrap">{s.clientName}</td>
                   <td className="px-4 py-3 text-muted max-w-[220px]"><div className="flex flex-col gap-0.5">{s.products.map((p, i) => <span key={i} className="text-xs truncate">{p}</span>)}</div></td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(s.date)}</td>
                   <td className="px-4 py-3 text-muted">{fmtMoney(s.subtotal)}</td>
                   <td className="px-4 py-3 text-warning">{s.discount > 0 ? `-${fmtMoney(s.discount)}` : '—'}</td>
-                  <td className="px-4 py-3 font-700 text-blue">{fmtMoney(s.total)}</td>
+                  <td className="px-4 py-3 font-700 text-mint">{fmtMoney(s.total)}</td>
                   <td className="px-4 py-3"><Badge cls={s.paymentMethod}>{s.paymentMethod === 'cash' ? 'Efectivo' : s.paymentMethod === 'card' ? 'Tarjeta' : 'Transferencia'}</Badge></td>
                 </tr>
               ))}
@@ -1048,7 +1012,7 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
             <div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center"><ShoppingBag size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-emerald-600 dark:text-emerald-400 uppercase">Punto de venta</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nueva venta</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Agrega repuestos, aceites o accesorios y confirma el pago.</p></div></div>
               <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
@@ -1056,7 +1020,7 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
             <form onSubmit={saveSale} className="p-7">
               <div className="grid lg:grid-cols-[1.35fr_.75fr] gap-7">
                 <div>
-                  <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={clientName} onChange={e => setClientName(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{CLIENTS.filter(c => c.status === 'active').map(c => <option key={c.id}>{c.name}</option>)}</select></label>
+                  <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={clientId} onChange={e => setClientId(e.target.value)} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm hover:border-[#86CCC0] transition-colors"><option value="">Seleccionar cliente</option>{clients.filter(c => c.status === 'active').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
                   <div className="mt-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 overflow-hidden shadow-sm">
                     <div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between"><div><strong className="text-sm text-slate-900 dark:text-white">Productos disponibles</strong><span className="block text-xs text-slate-500 dark:text-slate-400">Define la cantidad de cada artículo</span></div></div>
                     <div className="max-h-[410px] overflow-y-auto p-2.5 space-y-2 bg-slate-50/70 dark:bg-slate-900">
@@ -1093,7 +1057,7 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
                 </div>
               </div>
               {error && <div className="mt-5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
-              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">El stock se descontará al confirmar la operación.</p><div className="flex gap-3"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Confirmar venta</button></div></div>
+              <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 mt-7 pt-5 border-t border-slate-100 dark:border-slate-800"><p className="text-xs text-slate-500 dark:text-slate-400">El stock se descontará al confirmar la operación.</p><div className="flex gap-3"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Confirmar venta</button></div></div>
             </form>
           </div>
         </div>
@@ -1104,30 +1068,52 @@ function SalesSection({ inventory, setInventory }: { inventory: Product[]; setIn
 
 // ─── Admin: Inventory / Purchases ───────────────────────────────────────────────
 
-function InventorySection({ inventory, setInventory }: { inventory: Product[]; setInventory: React.Dispatch<React.SetStateAction<Product[]>> }) {
-  const emptyProduct = { name: '', category: 'part' as ProductCategory, brand: 'Generic' as BrandFilter, stock: 1, description: '', compatibility: '', salePrice: 0 };
+function InventorySection({ inventory, setInventory, purchases, setPurchases }: { inventory: Product[]; setInventory: React.Dispatch<React.SetStateAction<Product[]>>; purchases: Purchase[]; setPurchases: React.Dispatch<React.SetStateAction<Purchase[]>> }) {
+  const emptyProduct = { name: '', category: 'part' as ProductCategory, brand: 'Generic', stock: 1, description: '', compatibility: '', salePrice: 0, yearFrom: '', yearTo: '' };
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyProduct);
-  const [purchases, setPurchases] = useState<Purchase[]>(PURCHASES);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [formError, setFormError] = useState('');
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState({ supplier: '', productName: '', quantity: 1, unitCost: 0, date: new Date().toISOString().slice(0, 10), invoiceNumber: '' });
   const filtered = inventory.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.brand.toLowerCase().includes(search.toLowerCase()));
   const totalStock = inventory.filter(p => p.type === 'sale').reduce((sum, p) => sum + p.stock, 0);
 
-  const saveProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    setInventory(current => [{ id: `p${Date.now()}`, ...form, type: 'sale' as const, image: 'https://upload.wikimedia.org/wikipedia/commons/3/34/Car_workshop_tools.jpg' }, ...current]);
-    setForm(emptyProduct);
-    setModalOpen(false);
+  const closeProductModal = () => { setModalOpen(false); setForm(emptyProduct); setImageFile(null); setImagePreview(''); setFormError(''); };
+
+  const pickImage = (file: File | null) => {
+    setImageFile(file);
+    setImagePreview(file ? URL.createObjectURL(file) : '');
   };
 
-  const savePurchase = (e: React.FormEvent) => {
+  const saveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    try {
+      const image = imageFile
+        ? await api.uploadImage(imageFile)
+        : 'https://upload.wikimedia.org/wikipedia/commons/3/34/Car_workshop_tools.jpg';
+      const yearFrom = form.yearFrom ? Number(form.yearFrom) : undefined;
+      const yearTo = form.yearTo ? Number(form.yearTo) : yearFrom;
+      const created = await api.createProduct({ ...form, type: 'sale', image, compatYearFrom: yearFrom, compatYearTo: yearTo });
+      setInventory(current => [created, ...current]);
+      closeProductModal();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo guardar el producto');
+    }
+  };
+
+  const savePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     const total = Number(purchaseForm.quantity) * Number(purchaseForm.unitCost);
-    setPurchases(current => [{ id: `pc${Date.now()}`, supplier: purchaseForm.supplier, product: purchaseForm.productName, quantity: Number(purchaseForm.quantity), unitCost: Number(purchaseForm.unitCost), total, date: purchaseForm.date, invoiceNumber: purchaseForm.invoiceNumber, status: 'pending' }, ...current]);
-    setPurchaseForm({ supplier: '', productName: '', quantity: 1, unitCost: 0, date: new Date().toISOString().slice(0, 10), invoiceNumber: '' });
-    setPurchaseModalOpen(false);
+    try {
+      const created = await api.createPurchase({ supplier: purchaseForm.supplier, product: purchaseForm.productName, quantity: Number(purchaseForm.quantity), unitCost: Number(purchaseForm.unitCost), total, date: purchaseForm.date, invoiceNumber: purchaseForm.invoiceNumber, status: 'pending' });
+      setPurchases(current => [created, ...current]);
+      setPurchaseForm({ supplier: '', productName: '', quantity: 1, unitCost: 0, date: new Date().toISOString().slice(0, 10), invoiceNumber: '' });
+      setPurchaseModalOpen(false);
+    } catch { /* keep modal open on failure */ }
   };
 
   return (
@@ -1135,7 +1121,7 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
       <SectionHeader title="Inventario" subtitle={`${inventory.filter(p => p.type === 'sale').length} productos · ${totalStock} unidades disponibles`} action={<AddBtn label="Nuevo Producto" onClick={() => setModalOpen(true)} />} />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="stat-card bg-card rounded-xl p-4"><div className="text-xs text-muted">Unidades en stock</div><div className="font-display font-700 text-2xl text-gtext mt-1">{totalStock}</div></div>
-        <div className="stat-card bg-card rounded-xl p-4"><div className="text-xs text-muted">Productos en catálogo</div><div className="font-display font-700 text-2xl text-blue mt-1">{inventory.filter(p => p.type === 'sale').length}</div></div>
+        <div className="stat-card bg-card rounded-xl p-4"><div className="text-xs text-muted">Productos en catálogo</div><div className="font-display font-700 text-2xl text-mint mt-1">{inventory.filter(p => p.type === 'sale').length}</div></div>
         <div className="stat-card bg-card rounded-xl p-4"><div className="text-xs text-muted">Stock crítico</div><div className="font-display font-700 text-2xl text-warning mt-1">{inventory.filter(p => p.type === 'sale' && p.stock <= 5).length}</div></div>
       </div>
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por producto o marca..." /></div>
@@ -1150,7 +1136,7 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
                   <td className="px-4 py-3 text-muted capitalize">{p.category === 'part' ? 'Repuesto' : p.category === 'oil' ? 'Aceite' : p.category === 'filter' ? 'Filtro' : p.category === 'battery' ? 'Batería' : p.category === 'tire' ? 'Llanta' : 'Servicio'}</td>
                   <td className="px-4 py-3"><Badge cls={p.brand.toLowerCase()}>{p.brand === 'Generic' ? 'Genérico' : p.brand}</Badge></td>
                   <td className="px-4 py-3 text-muted max-w-[260px] truncate">{p.description}</td>
-                  <td className="px-4 py-3 text-muted max-w-[180px] truncate">{p.compatibility || '—'}</td>
+                  <td className="px-4 py-3 text-muted max-w-[180px] truncate">{[p.compatibility, p.compatYearFrom ? (p.compatYearTo && p.compatYearTo !== p.compatYearFrom ? `${p.compatYearFrom}–${p.compatYearTo}` : `${p.compatYearFrom}`) : ''].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="px-4 py-3"><span className={`font-700 ${p.type === 'service' ? 'text-muted' : p.stock <= 5 ? 'text-danger' : 'text-success'}`}>{p.type === 'service' ? '∞' : p.stock}</span></td>
                   <td className="px-4 py-3 text-muted">{p.salePrice ? fmtMoney(p.salePrice) : '—'}</td>
                 </tr>
@@ -1173,7 +1159,7 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
                   <td className="px-4 py-3 text-muted max-w-[200px] truncate">{pc.product}</td>
                   <td className="px-4 py-3 text-muted">{pc.quantity}</td>
                   <td className="px-4 py-3 text-muted">{fmtMoney(pc.unitCost)}</td>
-                  <td className="px-4 py-3 font-600 text-blue">{fmtMoney(pc.total)}</td>
+                  <td className="px-4 py-3 font-600 text-mint">{fmtMoney(pc.total)}</td>
                   <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtDate(pc.date)}</td>
                   <td className="px-4 py-3 text-muted font-mono text-xs">{pc.invoiceNumber}</td>
                   <td className="px-4 py-3"><Badge cls={pc.status}>{pc.status === 'received' ? 'Recibido' : pc.status === 'pending' ? 'Pendiente' : 'Devuelto'}</Badge></td>
@@ -1186,19 +1172,37 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
 
       {modalOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
-          <button className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
+          <button className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={closeProductModal} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
-            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Control de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar producto</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Configura sus características comerciales y disponibilidad.</p></div><button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button></div>
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
+            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-purple-light uppercase">Control de inventario</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar producto</h3><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Configura sus características comerciales y disponibilidad.</p></div><button onClick={closeProductModal} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button></div>
             <form onSubmit={saveProduct} className="p-7 grid sm:grid-cols-2 gap-5">
               <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nombre comercial</span><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. Filtro de aceite Toyota" /></label>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Categoría</span><select value={form.category} onChange={e => setForm({ ...form, category: e.target.value as ProductCategory })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="part">Repuesto</option><option value="oil">Aceite</option><option value="filter">Filtro</option><option value="battery">Batería</option><option value="tire">Llanta</option><option value="service">Servicio</option></select></label>
-              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Marca / Compatibilidad</span><select value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value as BrandFilter })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="Generic">Genérico</option><option value="Toyota">Toyota</option><option value="Ford">Ford</option><option value="Chevrolet">Chevrolet</option></select></label>
+              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Marca / Compatibilidad</span><select value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="Generic">Genérico (universal)</option>{CAR_MAKERS.map(b => <option key={b} value={b}>{b}</option>)}</select></label>
               <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Descripción</span><input required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Especificaciones del producto" /></label>
-              <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Compatibilidad / Modelos</span><input value={form.compatibility} onChange={e => setForm({ ...form, compatibility: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. Toyota Corolla 2018-2024" /></label>
+              <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Compatibilidad / Modelos</span><input value={form.compatibility} onChange={e => setForm({ ...form, compatibility: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. Corolla, Yaris, RAV4" /></label>
+              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Compatible desde el año</span><select value={form.yearFrom} onChange={e => setForm({ ...form, yearFrom: e.target.value, yearTo: form.yearTo && Number(form.yearTo) < Number(e.target.value) ? '' : form.yearTo })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="">Cualquiera</option>{VEHICLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select></label>
+              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Hasta el año</span><select value={form.yearTo} onChange={e => setForm({ ...form, yearTo: e.target.value })} disabled={!form.yearFrom} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white disabled:opacity-50"><option value="">{form.yearFrom ? `Solo ${form.yearFrom}` : 'Cualquiera'}</option>{VEHICLE_YEARS.filter(y => y >= Number(form.yearFrom || 0)).map(y => <option key={y} value={y}>{y}</option>)}</select></label>
+              <div className="sm:col-span-2">
+                <span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Foto del producto</span>
+                <div className="flex items-center gap-4">
+                  <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 cursor-pointer hover:border-purple/50 hover:text-purple-light transition-colors">
+                    <Package size={16} /> {imageFile ? imageFile.name : 'Subir imagen (png, jpg, webp — máx. 5 MB)'}
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={e => pickImage(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {imagePreview && (
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 flex-shrink-0">
+                      <img src={imagePreview} alt="Vista previa" className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => pickImage(null)} className="absolute top-0.5 right-0.5 p-0.5 rounded-md bg-slate-900/70 text-white"><X size={11} /></button>
+                    </div>
+                  )}
+                </div>
+              </div>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Stock inicial</span><input type="number" min={0} required value={form.stock} onChange={e => setForm({ ...form, stock: Number(e.target.value) })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Precio de venta</span><input type="number" min={0} step={0.01} required value={form.salePrice} onChange={e => setForm({ ...form, salePrice: Number(e.target.value) })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
-              <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar producto</button></div>
+              {formError && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{formError}</div>}
+              <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={closeProductModal} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Guardar producto</button></div>
             </form>
           </div>
         </div>
@@ -1208,8 +1212,8 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setPurchaseModalOpen(false)} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
-            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Compras</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar compra a proveedor</h3></div><button onClick={() => setPurchaseModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button></div>
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
+            <div className="flex justify-between items-start px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800"><div><div className="text-[11px] font-700 tracking-[.14em] text-purple-light uppercase">Compras</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar compra a proveedor</h3></div><button onClick={() => setPurchaseModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button></div>
             <form onSubmit={savePurchase} className="p-7 grid sm:grid-cols-2 gap-5">
               <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Proveedor</span><input required value={purchaseForm.supplier} onChange={e => setPurchaseForm({ ...purchaseForm, supplier: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Nombre del proveedor" /></label>
               <label className="sm:col-span-2"><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto</span><input required value={purchaseForm.productName} onChange={e => setPurchaseForm({ ...purchaseForm, productName: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Descripción del lote" /></label>
@@ -1219,7 +1223,7 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nº Factura</span><input required value={purchaseForm.invoiceNumber} onChange={e => setPurchaseForm({ ...purchaseForm, invoiceNumber: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="FAC-2024-0001" /></label>
               <div className="sm:col-span-2 flex justify-between items-center pt-5 border-t border-slate-100 dark:border-slate-800">
                 <div className="text-sm text-slate-600 dark:text-slate-300">Total estimado: <strong className="text-gtext">{fmtMoney(purchaseForm.quantity * purchaseForm.unitCost)}</strong></div>
-                <div className="flex gap-3"><button type="button" onClick={() => setPurchaseModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar compra</button></div>
+                <div className="flex gap-3"><button type="button" onClick={() => setPurchaseModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-600 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Guardar compra</button></div>
               </div>
             </form>
           </div>
@@ -1231,10 +1235,9 @@ function InventorySection({ inventory, setInventory }: { inventory: Product[]; s
 
 // ─── Admin: Warranties ──────────────────────────────────────────────────────────
 
-function WarrantiesSection() {
+function WarrantiesSection({ warranties, setWarranties, clients }: { warranties: Warranty[]; setWarranties: React.Dispatch<React.SetStateAction<Warranty[]>>; clients: Client[] }) {
   const today = new Date().toISOString().slice(0, 10);
-  const emptyForm = { clientName: '', product: '', serial: '', purchaseDate: today, months: 12, type: 'store' as Warranty['type'] };
-  const [warranties, setWarranties] = useState<Warranty[]>(WARRANTIES);
+  const emptyForm = { clientId: '', product: '', serial: '', purchaseDate: today, months: 12, type: 'store' as Warranty['type'] };
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -1243,25 +1246,31 @@ function WarrantiesSection() {
   expiry.setMonth(expiry.getMonth() + Number(form.months || 0));
   const filtered = warranties.filter(w => !search || w.clientName.toLowerCase().includes(search.toLowerCase()) || w.product.toLowerCase().includes(search.toLowerCase()) || w.serial.toLowerCase().includes(search.toLowerCase()));
 
-  const saveWarranty = (e: React.FormEvent) => {
+  const saveWarranty = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.clientName || form.product.trim().length < 3 || form.serial.trim().length < 3) { setError('Completa el cliente, producto y un serial válido.'); return; }
+    const client = clients.find(c => c.id === form.clientId);
+    if (!client || form.product.trim().length < 3 || form.serial.trim().length < 3) { setError('Completa el cliente, producto y un serial válido.'); return; }
     if (warranties.some(w => w.serial.toLowerCase() === form.serial.trim().toLowerCase())) { setError('Este número serial ya tiene una garantía registrada.'); return; }
-    setWarranties(current => [{ id: `w${Date.now()}`, clientName: form.clientName, product: form.product.trim(), serial: form.serial.trim().toUpperCase(), purchaseDate: form.purchaseDate, expiryDate: expiry.toISOString().slice(0, 10), status: 'active', type: form.type }, ...current]);
-    setForm(emptyForm); setError(''); setModalOpen(false);
+    try {
+      const created = await api.createWarranty({ clientId: form.clientId, clientName: client.name, product: form.product.trim(), serial: form.serial.trim().toUpperCase(), purchaseDate: form.purchaseDate, expiryDate: expiry.toISOString().slice(0, 10), type: form.type });
+      setWarranties(current => [created, ...current]);
+      setForm(emptyForm); setError(''); setModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar la garantía');
+    }
   };
 
   return (
     <div>
       <SectionHeader title="Garantías" subtitle={`${warranties.filter(w => w.status === 'active').length} activas · ${warranties.filter(w => w.status === 'expired').length} vencidas`} action={<AddBtn label="Nueva Garantía" onClick={() => setModalOpen(true)} />} />
       <div className="flex items-center gap-3 mb-4"><SearchBar value={search} onChange={setSearch} placeholder="Buscar por cliente o producto..." /></div>
-      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="bg-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(248,90,0,0.12)' }}>
         <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead><tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>{['ID', 'Cliente', 'Producto', 'Nº Serial', 'F. Compra', 'F. Vencimiento', 'Tipo', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead><tr style={{ background: 'rgba(248,90,0,0.08)', borderBottom: '1px solid rgba(248,90,0,0.12)' }}>{['ID', 'Cliente', 'Producto', 'Nº Serial', 'F. Compra', 'F. Vencimiento', 'Tipo', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-600 text-muted uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {filtered.map(w => (
-                <tr key={w.id} className="table-row-hover border-b border-[rgba(139,92,246,0.06)] last:border-0">
+                <tr key={w.id} className="table-row-hover border-b border-[rgba(248,90,0,0.06)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-muted">{w.id}</td>
                   <td className="px-4 py-3 font-500 text-gtext whitespace-nowrap">{w.clientName}</td>
                   <td className="px-4 py-3 text-muted max-w-[200px] truncate">{w.product}</td>
@@ -1280,13 +1289,13 @@ function WarrantiesSection() {
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
           <button aria-label="Cerrar" className="absolute inset-0 bg-slate-800/20 dark:bg-slate-950/60 backdrop-blur-sm" onClick={() => setModalOpen(false)} />
           <div className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl hero-banner dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 shadow-2xl">
-            <div className="h-1.5 bg-gradient-to-r from-[#6153d6] to-[#86CCC0]" />
+            <div className="h-1.5 bg-gradient-to-r from-purple to-accent" />
             <div className="flex items-start justify-between px-7 pt-7 pb-5 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-[#f1efff] dark:bg-indigo-950/60 text-[#6153d6] dark:text-indigo-400 flex items-center justify-center"><Shield size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-[#6153d6] dark:text-indigo-400 uppercase">Protección postventa</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nueva garantía</h3></div></div>
+              <div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-purple-soft text-purple-light flex items-center justify-center"><Shield size={22} /></div><div><div className="text-[11px] font-700 tracking-[.14em] text-purple-light uppercase">Protección postventa</div><h3 className="font-display text-2xl font-700 text-slate-900 dark:text-white mt-1">Registrar nueva garantía</h3></div></div>
               <button onClick={() => setModalOpen(false)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X size={19} /></button>
             </div>
             <form onSubmit={saveWarranty} className="p-7 grid sm:grid-cols-2 gap-5">
-              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente</option>{CLIENTS.map(c => <option key={c.id}>{c.name}</option>)}</select></label>
+              <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Cliente</span><select required value={form.clientId} onChange={e => setForm({ ...form, clientId: e.target.value })} className="w-full px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm"><option value="">Seleccionar cliente</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Producto</span><input required value={form.product} onChange={e => setForm({ ...form, product: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="Ej. Batería 24F-600" /></label>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Nº Serial</span><input required value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" placeholder="BT-000000" /></label>
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Duración (meses)</span><input type="number" min={1} required value={form.months} onChange={e => setForm({ ...form, months: Number(e.target.value) })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white" /></label>
@@ -1294,7 +1303,7 @@ function WarrantiesSection() {
               <label><span className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-2">Tipo de garantía</span><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as Warranty['type'] })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"><option value="store">Taller</option><option value="manufacturer">Fabricante</option></select></label>
               <div className="sm:col-span-2 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200">Vencimiento calculado: <strong className="text-gtext">{fmtDate(expiry.toISOString().slice(0, 10))}</strong></div>
               {error && <div className="sm:col-span-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>}
-              <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-[#6153d6] text-white text-sm font-600 shadow-lg shadow-[#6153d6]/20 hover:bg-[#5548c5] transition-colors">Guardar garantía</button></div>
+              <div className="sm:col-span-2 flex justify-end gap-3 pt-5 border-t border-slate-100 dark:border-slate-800"><button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancelar</button><button type="submit" className="px-5 py-2.5 rounded-xl bg-purple text-white text-sm font-600 shadow-lg shadow-purple/20 hover:bg-purple-dark transition-colors">Guardar garantía</button></div>
             </form>
           </div>
         </div>
@@ -1305,17 +1314,18 @@ function WarrantiesSection() {
 
 // ─── Admin: Contact & Location ─────────────────────────────────────────────────
 
-function ContactLocationSection() {
-  const [messages] = useState<ContactMessage[]>(CONTACT_MESSAGES);
-  const [info, setInfo] = useState({
-    address: 'Av. Principal del Taller, Zona Industrial Norte, Caracas 1050, Venezuela',
-    phone: '+58 (412) 555-1234',
-    whatsapp: '+58 (414) 999-0011',
-    email: 'taller@autocenterpro.com',
-    hours: 'Lunes a Sábado: 8:00 AM - 6:00 PM',
-  });
+function ContactLocationSection({ messages, storeInfo, onSaveStoreInfo }: { messages: ContactMessage[]; storeInfo: StoreInfo | null; onSaveStoreInfo: (info: StoreInfo) => Promise<void> }) {
+  const [info, setInfo] = useState<StoreInfo>(storeInfo ?? { address: '', phone: '', whatsapp: '', email: '', hours: '' });
+  useEffect(() => { if (storeInfo) setInfo(storeInfo); }, [storeInfo]);
   const [savedNotice, setSavedNotice] = useState(false);
-  const handleSave = (e: React.FormEvent) => { e.preventDefault(); setSavedNotice(true); setTimeout(() => setSavedNotice(false), 3000); };
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await onSaveStoreInfo(info);
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 3000);
+    } catch { /* save failed */ }
+  };
 
   return (
     <div className="space-y-8">
@@ -1323,12 +1333,12 @@ function ContactLocationSection() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="space-y-6">
           <div className="glow-card rounded-2xl p-6 bg-card">
-            <h3 className="font-display text-lg font-600 text-gtext mb-4 flex items-center gap-2"><MapPin size={18} className="text-blue" /> Ubicación en el Mapa</h3>
+            <h3 className="font-display text-lg font-600 text-gtext mb-4 flex items-center gap-2"><MapPin size={18} className="text-mint" /> Ubicación en el Mapa</h3>
             <div className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-inner relative bg-slate-900">
-              <iframe title="Mapa de Ubicación AutoCenter Pro" src="https://maps.google.com/maps?q=Caracas,Venezuela&t=&z=13&ie=UTF8&iwloc=&output=embed" width="100%" height="100%" style={{ border: 0 }} allowFullScreen loading="lazy" />
+              <iframe title={`Mapa de Ubicación ${BUSINESS_NAME}`} src="https://maps.google.com/maps?q=Caracas,Venezuela&t=&z=13&ie=UTF8&iwloc=&output=embed" width="100%" height="100%" style={{ border: 0 }} allowFullScreen loading="lazy" />
             </div>
             <div className="mt-4 p-3 rounded-lg bg-surface flex items-start gap-3 text-xs text-muted">
-              <Navigation size={16} className="text-blue flex-shrink-0 mt-0.5" />
+              <Navigation size={16} className="text-mint flex-shrink-0 mt-0.5" />
               <div><strong className="text-gtext block">Punto de referencia:</strong>A 200 metros de la estación de servicio. Estacionamiento para clientes.</div>
             </div>
           </div>
@@ -1338,16 +1348,16 @@ function ContactLocationSection() {
               {savedNotice && <span className="text-xs text-success font-600">¡Guardado con éxito!</span>}
             </div>
             <form onSubmit={handleSave} className="space-y-4 text-xs">
-              <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Dirección del Taller</label><input type="text" value={info.address} onChange={e => setInfo({ ...info, address: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all" /></div>
+              <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Dirección del Taller</label><input type="text" value={info.address} onChange={e => setInfo({ ...info, address: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all" /></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Teléfono</label><input type="text" value={info.phone} onChange={e => setInfo({ ...info, phone: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all" /></div>
-                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">WhatsApp</label><input type="text" value={info.whatsapp} onChange={e => setInfo({ ...info, whatsapp: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all" /></div>
+                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Teléfono</label><input type="text" value={info.phone} onChange={e => setInfo({ ...info, phone: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all" /></div>
+                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">WhatsApp</label><input type="text" value={info.whatsapp} onChange={e => setInfo({ ...info, whatsapp: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Correo Electrónico</label><input type="email" value={info.email} onChange={e => setInfo({ ...info, email: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all" /></div>
-                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Horario de Atención</label><input type="text" value={info.hours} onChange={e => setInfo({ ...info, hours: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-[#86CCC0] focus:ring-2 focus:ring-[#86CCC0]/20 transition-all" /></div>
+                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Correo Electrónico</label><input type="email" value={info.email} onChange={e => setInfo({ ...info, email: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all" /></div>
+                <div><label className="block font-600 text-slate-700 dark:text-slate-300 mb-1">Horario de Atención</label><input type="text" value={info.hours} onChange={e => setInfo({ ...info, hours: e.target.value })} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all" /></div>
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl text-sm font-600 text-white bg-[#6153d6] hover:bg-[#5244be] transition-colors shadow-md">Guardar Cambios de Contacto</button>
+              <button type="submit" className="w-full py-2.5 rounded-xl text-sm font-600 text-white bg-purple hover:bg-purple-dark transition-colors shadow-md">Guardar Cambios de Contacto</button>
             </form>
           </div>
         </div>
@@ -1377,26 +1387,39 @@ function AdminLoginModal({ onLoginSuccess, navigateTo }: { onLoginSuccess: () =>
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (username.trim().toLowerCase() === 'admin' && (password === 'admin' || password === 'admin123')) { onLoginSuccess(); } else { setError('Usuario o contraseña incorrectos. (Prueba admin / admin123)'); } };
+  const [loading, setLoading] = useState(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { token } = await api.login(username.trim().toLowerCase(), password);
+      sessionStorage.setItem('admin_token', token);
+      onLoginSuccess();
+    } catch {
+      setError('Usuario o contraseña incorrectos.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center p-4 hero-banner dark:bg-slate-950 transition-colors duration-200">
       <div className="w-full max-w-md bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xl dark:shadow-2xl overflow-hidden animate-in fade-in duration-300">
-        <div className="h-2 bg-gradient-to-r from-[#6153d6] via-indigo-500 to-[#86CCC0]" />
+        <div className="h-2 bg-gradient-to-r from-purple via-purple-light to-accent" />
         <div className="p-8">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-blue-100/80 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 mx-auto flex items-center justify-center mb-4 shadow-sm border border-blue-200/70 dark:border-indigo-900/50"><Shield size={32} /></div>
+            <div className="w-16 h-16 rounded-2xl bg-purple-soft text-purple-light mx-auto flex items-center justify-center mb-4 shadow-sm border border-purple/25 dark:border-purple/30"><Shield size={32} /></div>
             <h2 className="font-display text-2xl font-700 text-slate-900 dark:text-white">Acceso Administrativo</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Ingresa tus credenciales para acceder al panel de AutoCenter Pro</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Ingresa tus credenciales para acceder al panel de {BUSINESS_NAME}</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div><label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Usuario de Administrador</label><div className="relative"><Users size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" required value={username} onChange={e => { setUsername(e.target.value); setError(''); }} placeholder="admin" className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm" /></div></div>
-            <div><label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Contraseña</label><div className="relative"><Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="password" required value={password} onChange={e => { setPassword(e.target.value); setError(''); }} placeholder="••••••••" className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-sm" /></div></div>
+            <div><label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Usuario de Administrador</label><div className="relative"><Users size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" required value={username} onChange={e => { setUsername(e.target.value); setError(''); }} placeholder="admin" className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple shadow-sm" /></div></div>
+            <div><label className="block text-xs font-600 text-slate-700 dark:text-slate-300 mb-1.5">Contraseña</label><div className="relative"><Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" /><input type="password" required value={password} onChange={e => { setPassword(e.target.value); setError(''); }} placeholder="••••••••" className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-purple shadow-sm" /></div></div>
             {error && <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-xs text-red-600 dark:text-red-300 font-500 animate-in fade-in">{error}</div>}
-            <button type="submit" className="w-full py-3 px-4 rounded-xl bg-[#6153d6] hover:bg-[#5244be] text-white font-600 text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 mt-2">Iniciar Sesión</button>
+            <button type="submit" disabled={loading} className="w-full py-3 px-4 rounded-xl bg-purple hover:bg-purple-dark text-white font-600 text-sm shadow-lg shadow-purple/25 transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-60">{loading ? 'Verificando…' : 'Iniciar Sesión'}</button>
           </form>
           <div className="mt-6 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 text-center">
-            <button type="button" onClick={() => navigateTo('catalog')} className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-500 transition-colors inline-flex items-center gap-1.5"><Layers size={13} /> Volver al catálogo público</button>
+            <button type="button" onClick={() => navigateTo('catalog')} className="text-xs text-slate-500 dark:text-slate-400 hover:text-purple-light font-500 transition-colors inline-flex items-center gap-1.5"><Layers size={13} /> Volver al catálogo público</button>
           </div>
         </div>
       </div>
@@ -1408,34 +1431,88 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => sessionStorage.getItem('admin_authenticated') === 'true');
   const [section, setSection] = useState<AdminSection>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [inventory, setInventory] = useState<Product[]>(PRODUCTS);
-  const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>(SERVICE_ORDERS);
-  const [clients, setClients] = useState<Client[]>(CLIENTS);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(VEHICLES);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [inventory, setInventory] = useState<Product[]>([]);
+  const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [warranties, setWarranties] = useState<Warranty[]>([]);
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [storeInfo, setStoreInfo] = useState<StoreInfo | null>(null);
   const handleLoginSuccess = () => { sessionStorage.setItem('admin_authenticated', 'true'); setIsAuthenticated(true); };
-  const handleLogout = () => { sessionStorage.removeItem('admin_authenticated'); setIsAuthenticated(false); };
+  const handleLogout = () => { sessionStorage.removeItem('admin_authenticated'); sessionStorage.removeItem('admin_token'); setIsAuthenticated(false); };
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    setLoadError('');
+    Promise.all([
+      api.getProducts(), api.getClients(), api.getVehicles(), api.getServiceOrders(),
+      api.getSales(), api.getPurchases(), api.getWarranties(), api.getMessages(), api.getStoreInfo(),
+    ]).then(([products, clients, vehicles, orders, sales, purchases, warranties, messages, info]) => {
+      setInventory(products);
+      setClients(clients);
+      setVehicles(vehicles);
+      setServiceOrders(orders);
+      setSales(sales);
+      setPurchases(purchases);
+      setWarranties(warranties);
+      setMessages(messages);
+      setStoreInfo(info);
+    }).catch(() => setLoadError('No se pudo conectar con el servidor. Verifica que el backend esté corriendo en https://apimechanic.enigmastudioss.com'))
+      .finally(() => setLoading(false));
+  }, [isAuthenticated]);
+
+  const handleSaveStoreInfo = async (info: StoreInfo) => {
+    const saved = await api.updateStoreInfo(info);
+    setStoreInfo(saved);
+  };
+
   if (!isAuthenticated) return <AdminLoginModal onLoginSuccess={handleLoginSuccess} navigateTo={navigateTo} />;
+
+  if (loading) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center text-muted text-sm">
+        Cargando datos del taller…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-3">
+          <AlertTriangle size={32} className="mx-auto text-warning" />
+          <p className="text-sm text-gtext font-600">{loadError}</p>
+          <button onClick={() => { setIsAuthenticated(false); setIsAuthenticated(true); }} className="px-4 py-2 rounded-xl bg-purple text-white text-sm font-600 hover:bg-purple-dark transition-colors">Reintentar</button>
+        </div>
+      </div>
+    );
+  }
 
   const SIDEBAR_ITEMS: { key: AdminSection; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'dashboard', label: 'Panel Principal', icon: <LayoutDashboard size={18} /> },
     { key: 'clients', label: 'Clientes', icon: <Users size={18} />, count: clients.length },
     { key: 'vehicles', label: 'Vehículos', icon: <Car size={18} />, count: vehicles.length },
     { key: 'serviceOrders', label: 'Órdenes de Servicio', icon: <Wrench size={18} />, count: serviceOrders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length },
-    { key: 'sales', label: 'Ventas', icon: <ShoppingBag size={18} />, count: SALES.length },
+    { key: 'sales', label: 'Ventas', icon: <ShoppingBag size={18} />, count: sales.length },
     { key: 'purchases', label: 'Inventario y Compras', icon: <Package size={18} />, count: inventory.filter(p => p.type === 'sale' && p.stock <= 5).length },
-    { key: 'warranties', label: 'Garantías', icon: <Shield size={18} />, count: WARRANTIES.filter(w => w.status === 'active').length },
+    { key: 'warranties', label: 'Garantías', icon: <Shield size={18} />, count: warranties.filter(w => w.status === 'active').length },
     { key: 'contact', label: 'Ubicación y Contacto', icon: <MapPin size={18} /> },
   ];
 
   const SectionContent = {
-    dashboard: <Dashboard inventory={inventory} serviceOrders={serviceOrders} />,
+    dashboard: <Dashboard inventory={inventory} serviceOrders={serviceOrders} clients={clients} sales={sales} />,
     clients: <ClientsSection clients={clients} setClients={setClients} />,
     vehicles: <VehiclesSection clients={clients} vehicles={vehicles} setVehicles={setVehicles} />,
     serviceOrders: <ServiceOrdersSection serviceOrders={serviceOrders} setServiceOrders={setServiceOrders} inventory={inventory} setInventory={setInventory} clients={clients} vehicles={vehicles} />,
-    sales: <SalesSection inventory={inventory} setInventory={setInventory} />,
-    purchases: <InventorySection inventory={inventory} setInventory={setInventory} />,
-    warranties: <WarrantiesSection />,
-    contact: <ContactLocationSection />,
+    sales: <SalesSection sales={sales} setSales={setSales} inventory={inventory} setInventory={setInventory} clients={clients} />,
+    purchases: <InventorySection inventory={inventory} setInventory={setInventory} purchases={purchases} setPurchases={setPurchases} />,
+    warranties: <WarrantiesSection warranties={warranties} setWarranties={setWarranties} clients={clients} />,
+    contact: <ContactLocationSection messages={messages} storeInfo={storeInfo} onSaveStoreInfo={handleSaveStoreInfo} />,
   }[section];
 
   return (
@@ -1446,24 +1523,24 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
           {SIDEBAR_ITEMS.map(item => {
             const active = section === item.key;
             return (
-              <button key={item.key} onClick={() => { setSection(item.key); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all relative ${active ? 'sidebar-item-active font-600' : 'text-muted hover:text-gtext hover:bg-[rgba(139,92,246,0.05)]'}`}>
-                <span style={{ color: active ? '#a78bfa' : undefined }}>{item.icon}</span>
+              <button key={item.key} onClick={() => { setSection(item.key); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all relative ${active ? 'sidebar-item-active font-600' : 'text-muted hover:text-gtext hover:bg-[rgba(248,90,0,0.05)]'}`}>
+                <span style={{ color: active ? '#FFA15C' : undefined }}>{item.icon}</span>
                 <span className="flex-1 text-left">{item.label}</span>
-                {item.count !== undefined && item.count > 0 && <span className="text-[10px] font-700 px-1.5 py-0.5 rounded-full" style={{ background: active ? 'rgba(139,92,246,0.3)' : 'rgba(139,92,246,0.15)', color: active ? '#c4b5fd' : '#7c6fa8' }}>{item.count}</span>}
+                {item.count !== undefined && item.count > 0 && <span className="text-[10px] font-700 px-1.5 py-0.5 rounded-full" style={{ background: active ? 'rgba(248,90,0,0.3)' : 'rgba(248,90,0,0.15)', color: active ? '#FFB380' : '#B5795A' }}>{item.count}</span>}
               </button>
             );
           })}
         </nav>
-        <div className="p-4 border-t border-[rgba(139,92,246,0.1)] flex flex-col gap-2">
+        <div className="p-4 border-t border-[rgba(248,90,0,0.1)] flex flex-col gap-2">
           <button onClick={() => navigateTo('catalog')} className="w-full py-2.5 px-3 rounded-xl bg-[#172033] dark:bg-indigo-600 text-white hover:bg-slate-800 dark:hover:bg-indigo-500 transition-colors text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"><Layers size={14} className="text-white" /> Volver al Catálogo</button>
           <button onClick={handleLogout} className="w-full py-2.5 px-3 rounded-xl bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all text-xs font-600 flex items-center justify-center gap-1.5 shadow-sm"><LogOut size={14} className="text-red-600 dark:text-red-400 flex-shrink-0" /> Cerrar Sesión</button>
-          <div className="text-xs text-muted text-center mt-1">AutoCenter Pro v1.0</div>
+          <div className="text-xs text-muted text-center mt-1">{BUSINESS_NAME} v1.0</div>
           <div className="text-[10px] text-muted text-center opacity-50">Sistema de Gestión de Taller</div>
         </div>
       </aside>
       <main className="flex-1 overflow-y-auto bg-bg">
-        <div className="lg:hidden flex items-center gap-3 p-4 border-b border-[rgba(139,92,246,0.1)]">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg text-muted hover:text-gtext" style={{ background: 'rgba(139,92,246,0.08)' }}><Menu size={18} /></button>
+        <div className="lg:hidden flex items-center gap-3 p-4 border-b border-[rgba(248,90,0,0.1)]">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg text-muted hover:text-gtext" style={{ background: 'rgba(248,90,0,0.08)' }}><Menu size={18} /></button>
           <span className="text-sm font-600 text-gtext">{SIDEBAR_ITEMS.find(i => i.key === section)?.label}</span>
         </div>
         <div className="p-6 lg:p-8">{SectionContent}</div>
@@ -1477,20 +1554,21 @@ function AdminView({ navigateTo }: { navigateTo: (v: View) => void }) {
 function Navbar({ navigateTo, darkMode, setDarkMode }: { navigateTo: (v: View) => void; darkMode: boolean; setDarkMode: React.Dispatch<React.SetStateAction<boolean>> }) {
   return (
     <header className="navbar-blur fixed top-0 left-0 right-0 z-40 h-16 flex items-center px-6 gap-6 transition-colors duration-200">
-      <div onClick={() => navigateTo('catalog')} className="flex items-center gap-2.5 flex-shrink-0 cursor-pointer">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-[#172033] dark:bg-indigo-600 shadow-md"><Car size={19} className="text-white" /></div>
-        <div><div className="font-display font-700 text-gtext text-base leading-none">AutoCenter</div><div className="text-[10px] text-muted leading-none mt-0.5">Pro</div></div>
-      </div>
+      <button type="button" onClick={() => navigateTo('catalog')} className="flex items-center gap-2.5 min-w-0 group">
+        <span className="w-9 h-9 rounded-xl bg-purple text-white flex items-center justify-center shadow-md shadow-purple/30 group-hover:bg-purple-dark transition-colors flex-shrink-0"><Wrench size={17} /></span>
+        <span className="font-display font-700 text-gtext text-sm sm:text-base leading-tight truncate">{BUSINESS_NAME}</span>
+      </button>
       <div className="flex-1" />
-      <div className="hidden md:flex items-center gap-4 text-xs text-muted">
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />{SERVICE_ORDERS.filter(o => o.status === 'in_progress').length} en taller</span>
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: SERVICE_ORDERS.some(o => o.status === 'pending' && new Date(o.dueDate) < new Date()) ? '#ef4444' : '#6b7280' }} />{SERVICE_ORDERS.filter(o => o.status === 'pending' && new Date(o.dueDate) < new Date()).length} atrasadas</span>
-      </div>
-      <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 relative text-xs font-600 shadow-inner select-none">
-        <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-[#6153d6] dark:bg-indigo-600 shadow-sm transition-all duration-300 ease-out ${darkMode ? 'left-[calc(50%+2px)]' : 'left-1'}`} />
-        <button type="button" onClick={() => setDarkMode(false)} className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition-colors duration-200 ${!darkMode ? 'text-white font-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}><Sun size={14} className={!darkMode ? 'text-amber-300' : ''} /> Claro</button>
-        <button type="button" onClick={() => setDarkMode(true)} className={`relative z-10 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg transition-colors duration-200 ${darkMode ? 'text-white font-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}><Moon size={14} className={darkMode ? 'text-amber-300' : ''} /> Oscuro</button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setDarkMode(d => !d)}
+        aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+        title={darkMode ? 'Modo claro' : 'Modo oscuro'}
+        className="relative w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-amber-300 flex items-center justify-center shadow-sm hover:border-purple/50 hover:text-purple dark:hover:text-amber-200 transition-all duration-200 overflow-hidden"
+      >
+        <Sun size={16} className={`absolute transition-all duration-300 ${darkMode ? 'rotate-0 scale-100 opacity-100' : 'rotate-90 scale-50 opacity-0'}`} />
+        <Moon size={16} className={`absolute transition-all duration-300 ${darkMode ? '-rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100'}`} />
+      </button>
     </header>
   );
 }
